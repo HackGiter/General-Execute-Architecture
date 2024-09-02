@@ -5,6 +5,9 @@ create_renum_dataset.py
 # ignore any command scripts
 *sh
 
+# ignore any .ipynb
+*.ipynb 
+
 # ignore self folder
 gea/self/
 

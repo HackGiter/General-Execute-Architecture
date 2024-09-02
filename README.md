@@ -1,4 +1,4 @@
-<h1 style="text-align: center;">General Execute Architecture</h1>
+<h1 align="center">General Execute Architecture</h1>
 
 <p align="center">
   <img src="img/gea_logo.png" alt="GEA" style="width: 100%; max-width: 800px;">
