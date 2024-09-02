@@ -1,6 +1,6 @@
 # General Execute Architecture
 
-![img/gea_logo.png](https://github.com/HackGiter/General-Execute-Architecture)
+![https://github.com/HackGiter/General-Execute-Architecture/blob/master/img/gea_logo.png](https://github.com/HackGiter/General-Execute-Architecture)
 
 ## 简介(Introduction)
 作为一种通用的通用模型运行工具，包括训练、评估以及推理等任务，还在完善中，主要是我平时按需求添加功能。
