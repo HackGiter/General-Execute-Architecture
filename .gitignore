@@ -10,3 +10,4 @@ gea/self/
 
 # ignore Python compile
 *.pyc
+__pycache__/
