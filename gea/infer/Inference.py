@@ -1,0 +1,3 @@
+
+class Infer:
+    NotImplemented
