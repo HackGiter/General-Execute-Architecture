@@ -1,0 +1,5 @@
+# ignore check.ipynb
+check.ipynb
+
+# ignore any command scripts
+*sh
