@@ -1,5 +1,12 @@
 # ignore check.ipynb
 check.ipynb
+create_renum_dataset.py
 
 # ignore any command scripts
 *sh
+
+# ignore self folder
+gea/self/
+
+# ignore Python compile
+*.pyc
