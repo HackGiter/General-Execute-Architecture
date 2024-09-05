@@ -208,13 +208,14 @@ class TokenStatisticMetric(MetricBase):
     def __init__(
             self, 
             idxs:int = None,
-            size:int = None, ) -> None:
+            vocab_size:int = None, ) -> None:
         super().__init__()
         self.idxs = idxs
-        self.size = size
-        self.results = np.zeros([self.idxs, self.size], dtype=np.float32)
+        self.vocab_size = vocab_size
+        self.results = np.zeros([self.idxs + 1, self.vocab_size], dtype=np.float32)
 
     def update(self, id:int = None, label:int = None, **kwargs) -> None:
+        self.results[-1, label] += 1
         self.results[id, label] += 1
 
     def summary(self) -> Dict[str, Any]:
