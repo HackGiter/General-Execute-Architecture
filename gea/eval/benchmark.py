@@ -266,11 +266,12 @@ class GSM8K(BenchmarkBase):
                  tokenizer: AutoTokenizer = None, **kwargs) -> None:
         super().__init__("GSM8K", path, "main", gsm8k_fastchat if use_fastchat else gsm8k , tokenizer, **kwargs)
 
-    def evaluate(self, exp:Experiments, excecute:Callable, model:AutoModel, *args):
+    def evaluate(self, exp:Experiments, excecute:Callable, model:AutoModel, *args, **kwargs):
         if getattr(self, "_dataset", None) is None:
             self.prepare()
         torch.cuda.empty_cache()
         exp.tqdm("INFERENCING", len(self._dataset))
+        summary_method:str = kwargs.pop("summary_method", None)
         kwargs = {**exp}
         for _, item in enumerate(self._dataset):
             input_ids = item['input_ids'].to(model.device)
@@ -282,7 +283,7 @@ class GSM8K(BenchmarkBase):
             )
             if exp.add(outputs):
                 break
-        exp.summary()
+        exp.summary(summary_method)
 
 class HUMANEVAL(BenchmarkBase):
     def __init__(self, 
@@ -291,9 +292,10 @@ class HUMANEVAL(BenchmarkBase):
                  tokenizer: AutoTokenizer = None, **kwargs) -> None:
         super().__init__("HUMANEVAL", path, "python", humaneval_fastchat if use_fastchat else humaneval, tokenizer, **kwargs)
 
-    def evaluate(self, exp:Experiments, excecute:Callable, model:AutoModel, *args):
+    def evaluate(self, exp:Experiments, excecute:Callable, model:AutoModel, *args, **kwargs):
         torch.cuda.empty_cache()
         exp.tqdm("INFERENCING", len(self._dataset))
+        summary_method:str = kwargs.pop("summary_method", None)
         kwargs = {**exp}
         for _, item in enumerate(self._dataset):
             input_ids = item['input_ids'].to(model.device)
@@ -305,7 +307,7 @@ class HUMANEVAL(BenchmarkBase):
             )
             if exp.add(outputs):
                 break
-        exp.summary()
+        exp.summary(summary_method)
 
 class MT_BENCH(BenchmarkBase):
     def __init__(self, 
@@ -317,6 +319,8 @@ class MT_BENCH(BenchmarkBase):
     def evaluate(self, exp:Experiments, excecute:Callable, model:AutoModel, *args, **kwargs):
         torch.cuda.empty_cache()
         sequential:bool = kwargs.pop("sequential", False)
+        merge_method:str = kwargs.pop("merge_method", None)
+        summary_method:str = kwargs.pop("summary_method", None)
         exp.tqdm("INFERENCING", len(self._dataset))
         kwargs = { **exp }
         for _, items in enumerate(self._dataset):
@@ -331,10 +335,10 @@ class MT_BENCH(BenchmarkBase):
                 )
                 input_ids = outputs.sequences
                 kwargs = { **outputs.kwargs, **exp } if sequential else kwargs
-                exp.merge(outputs)
+                exp.merge(outputs, merge_method)
             if exp.add(outputs):
                 break
-        exp.summary()
+        exp.summary(summary_method)
 
 BENCHMARK_CATEGORIES: Dict[str, BenchmarkBase] = {
     'GSM8K': GSM8K,

@@ -6,10 +6,11 @@ import numpy as np
 
 from .distance import cosine_distance, absolute_distance
 
-class MergeMethod(str, Enum):
+class Method(str, Enum):
     MEAN = "mean"
     MAX = "max"
     MIN = "min"
+    SUM = "sum"
 
 class DistanceMetric(str, Enum):
     COSINE = "cosine"
@@ -75,14 +76,16 @@ class Timer(MetricBase):
     def summary(self) -> Dict[str, Any]:
         return { "timing": self.timing }
     
-    def merge(self, eval:'Timer', method: Union[MergeMethod, str] = MergeMethod.MEAN) -> None:
+    def merge(self, eval:'Timer', method: Union[Method, str] = Method.MEAN) -> None:
         _merge_times = (self._merge_times + eval._merge_times)
-        if method == MergeMethod.MEAN:
+        if method == Method.MEAN:
             self.timing = (self.timing * self._merge_times + eval.timing * self._merge_times) / _merge_times
-        elif method == MergeMethod.MAX:
+        elif method == Method.MAX:
             self.timing = max(self.timing, eval.timing)
-        else:
+        elif method == Method.MIN:
             self.timing = min(self.timing, eval.timing)
+        else:
+            self.timing = self.timing + eval.timing
         self._merge_times = _merge_times
 
 class  AssistantMetric(Timer):
@@ -131,26 +134,32 @@ class  AssistantMetric(Timer):
             "tok_per_sec": self.timing / self.tokens,
         }
     
-    def merge(self, eval:'AssistantMetric', method: Union[MergeMethod, str] = MergeMethod.MEAN) -> None:
+    def merge(self, eval:'AssistantMetric', method: Union[Method, str] = Method.MEAN) -> None:
         _merge_times = (self._merge_times + eval._merge_times)
-        if method == MergeMethod.MEAN:
+        if method == Method.MEAN:
             self.ratio = (self.ratio * self._merge_times + eval.ratio * eval._merge_times) / _merge_times
             self.acc_num = [(it1 * self._merge_times + it2 * eval._merge_times) / _merge_times for it1, it2 in zip(self.acc_num, eval.acc_num)]
             self.accuracy = [(it1 * self._merge_times + it2 * eval._merge_times) / _merge_times for it1, it2 in zip(self.accuracy, eval.accuracy)]
             self.tokens = (self.tokens * self._merge_times + eval.tokens * eval._merge_times) / _merge_times
             self.timing = (self.timing * self._merge_times + eval.timing * self._merge_times) / _merge_times
-        elif method == MergeMethod.MAX:
+        elif method == Method.MAX:
             self.ratio = max(self.ratio, eval.ratio)
             self.acc_num = max(self.acc_num, eval.acc_num)
             self.accuracy = max(self.accuracy, eval.accuracy)
             self.tokens = max(self.tokens, eval.tokens)
             self.timing = max(self.timing, eval.timing)
-        else:
+        elif method == Method.MIN:
             self.ratio = min(self.ratio, eval.ratio)
             self.acc_num = min(self.acc_num, eval.acc_num)
             self.accuracy = min(self.accuracy, eval.accuracy)
             self.tokens = min(self.tokens, eval.tokens)
             self.timing = min(self.timing, eval.timing)
+        else:
+            self.ratio = self.ratio + eval.ratio
+            self.acc_num = self.acc_num + eval.acc_num
+            self.accuracy = self.accuracy + eval.accuracy
+            self.tokens = self.tokens + eval.tokens
+            self.timing = self.timing + eval.timing
         self._merge_times = _merge_times
 
 class StateMetric(MetricBase):
@@ -179,16 +188,46 @@ class StateMetric(MetricBase):
     def summary(self) -> Dict[str, Any]:
         return { "metrics" : self.results }          
 
-    def merge(self, eval:'StateMetric', method: Union[MergeMethod, str] = MergeMethod.MEAN) -> None:
+    def merge(self, eval:'StateMetric', method: Union[Method, str] = Method.MEAN) -> None:
         _merge_times = (self._merge_times + eval._merge_times)
         if len(self.results[0]) != 0 and len(eval.results[0]) != 0:
-            if method == MergeMethod.MEAN:
+            if method == Method.MEAN:
                 self.results = [(it1 * self._merge_times + it2 * eval._merge_times) / _merge_times for it1, it2 in zip(self.results, eval.results)]
-            elif method == MergeMethod.MAX:
+            elif method == Method.MAX:
                 self.results = [np.maximum(it1, it2) for it1, it2 in zip(self.results, eval.results)]
-            else:
+            elif method == Method.MIN:
                 self.results = [np.minimum(it1, it2) for it1, it2 in zip(self.results, eval.results)]
+            else:
+                self.results = [it1 + it2 for it1, it2 in zip(self.results, eval.results)]
             self._merge_times = _merge_times
         elif len(eval.results[0]) != 0:
             self._merge_times = eval._merge_times
             self.results = eval.results
+
+class TokenStatisticMetric(MetricBase):
+    def __init__(
+            self, 
+            idxs:int = None,
+            size:int = None, ) -> None:
+        super().__init__()
+        self.idxs = idxs
+        self.size = size
+        self.results = np.zeros([self.idxs, self.size], dtype=np.float32)
+
+    def update(self, id:int = None, label:int = None, **kwargs) -> None:
+        self.results[id, label] += 1
+
+    def summary(self) -> Dict[str, Any]:
+        return { "metrics" : self.results }          
+
+    def merge(self, eval:'TokenStatisticMetric', method: Union[Method, str] = Method.MEAN) -> None:
+        _merge_times = (self._merge_times + eval._merge_times)
+        if method == Method.MEAN:
+            self.results = (self.results * self._merge_times + eval.results * eval._merge_times) / _merge_times
+        elif method == Method.MAX:
+            self.results = np.maximum(self.results, eval.results)
+        elif method == Method.MIN:
+            self.results = np.minimum(self.results, eval.results)
+        else:
+            self.results = self.results + eval.results
+        self._merge_times = _merge_times

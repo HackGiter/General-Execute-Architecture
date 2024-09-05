@@ -4,7 +4,7 @@ from typing import Iterable, Union, Tuple, Dict, List, Any
 import torch
 import numpy as np
 
-from ..metric.metrics import MergeMethod, MetricBase
+from ..metric.metrics import Method, MetricBase
 from ..utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -34,16 +34,26 @@ def process_metrics(
         return summaries + [metrics.cpu()]
     else:
         return (summaries if summaries is not None else []) + [np.array(metrics)]
+    
+def process_method(metrics: np.ndarray, method:Method) -> np.ndarray:
+    if method == Method.MEAN:
+        return metrics.mean(axis=0)
+    elif method == Method.MAX:
+        return metrics.max(axis=0)
+    elif method == Method.MIN:
+        return metrics.min(axis=0)
+    else:
+        return metrics.sum(axis=0)
 
-def summary_metrics(metrics: Union[List[Any], Dict[str, Any], Any]) -> Any:
+def summary_metrics(metrics: Union[List[Any], Dict[str, Any], Any], method:Method) -> Any:
     if isinstance(metrics, Dict):
-        return { k:summary_metrics(v) for k, v in metrics.items() }
+        return { k:summary_metrics(v, method) for k, v in metrics.items() }
     elif isinstance(metrics, List):
         if len(metrics) > 0:
             if not isinstance(metrics[0], List) and not isinstance(metrics[0], Dict):
-                return np.array(metrics).mean(axis=0)
+                return process_method(np.array(metrics), method)
             else:
-                return [summary_metrics(item) for item in metrics]
+                return [summary_metrics(item, method) for item in metrics]
     return metrics
 
 class Experiments:
@@ -89,7 +99,7 @@ class Experiments:
         else:
             return False
         
-    def merge(self, eval: Union[MetricBase, Any], method: Union[MergeMethod, str] = MergeMethod.MEAN) -> None:
+    def merge(self, eval: Union[MetricBase, Any], method: Union[Method, str] = Method.MEAN) -> None:
         if isinstance(eval, MetricBase):
             if getattr(self, '_intermediate', None) is None:
                 self._intermediate = eval
@@ -130,12 +140,13 @@ class Experiments:
     #         elif isinstance(value, Mapping):
     #             self.summaries[key]
 
-    def summary(self) -> Dict[str, List[Any]]:
+    def summary(self, method:Method = Method.MEAN) -> Dict[str, List[Any]]:
+        method = Method.MEAN if method is None else method
         if self.summaries is None:
             for item in self.metrics:
                 self.summaries = process_metrics(self.summaries, item.summary())
             # logger.debug(self.summaries.keys())
-            self.summaries = summary_metrics(self.summaries)
+            self.summaries = summary_metrics(self.summaries, method)
         return self.summaries
 
     def print(self):
@@ -157,7 +168,7 @@ class Experiments:
                 for item in value:
                     logs += f"{item:.3f} " if isinstance(item, float) else f"{item} "
             else:
-                logs += f": {value:.3f}"
+                logs += f": {value:.3f}" if isinstance(value, float) else f"{value}"
             logger.info(logs)
 
     def tqdm(self, desc:str, total:int=None):
