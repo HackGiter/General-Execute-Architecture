@@ -104,6 +104,12 @@ def get_prompts(
              ([item['input_ids'] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
               [item['input_ids'] for item in instructions[len(responses):]]))
         , dim=-1)
+        labels = torch.cat(
+            [torch.cat((torch.zeros_like(instr['input_ids']), label['input_ids']), dim=-1) for instr, label in zip(instructions, responses)] + 
+            ([] if len(instructions) == len(responses) else 
+             ([item['input_ids'] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
+              [item['input_ids'] for item in instructions[len(responses):]]))
+        , dim=-1)
         attention_mask = torch.cat(
             [torch.cat((instr['attention_mask'], label['attention_mask']), dim=-1) for instr, label in zip(instructions, responses)] + 
             ([] if len(instructions) == len(responses) else 
@@ -112,17 +118,20 @@ def get_prompts(
         , dim=-1)
         if max_length is not None:
             input_ids = input_ids[:, :max_length]
+            labels = labels[:, :max_length]
             attention_mask = attention_mask[:, :max_length]
     else:
         instructions = instructions if len(instructions) != 0 else responses
         if concatenated:
             input_ids = torch.cat([item['input_ids'] for item in instructions], dim=-1)
+            labels = input_ids
             attention_mask = torch.cat([item['attention_mask'] for item in instructions], dim=-1)
         else:
             input_ids = [item['input_ids'] for item in instructions]
+            labels = None
             attention_mask = [item['attention_mask'] for item in instructions]
 
-    return { "input_ids":input_ids, "attention_mask":attention_mask }
+    return { "input_ids":input_ids, "labels":labels, "attention_mask":attention_mask }
 
 @dataclass
 class DataProfile:
@@ -268,6 +277,19 @@ register_sequences(
     dtype='multi-turn',
     conversations=['content', 'role'],
     roles=['user', 'assistant'],
+)
+
+register_sequences(
+    name="ShareGPT_Vicuna_unfiltered",
+    load_from='file',
+    path="/data/lhz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
+    split='train',
+    contexts=[],
+    instructions=['conversations'],
+    responses=['conversations'],
+    dtype='multi-turn',
+    conversations=['value', 'from'],
+    roles=['human', 'gpt']
 )
 
 def get_dataset_kwargs(train_args: TrainArguments, **kwargs) -> Dict[str, Any]:

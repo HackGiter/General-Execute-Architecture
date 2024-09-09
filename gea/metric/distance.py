@@ -69,3 +69,25 @@ def minkowski_distance(
         x = norm_fn(x, **kwargs) if norm_fn is not None else standard_norm(x, **kwargs)
         y = norm_fn(y, **kwargs) if norm_fn is not None else standard_norm(y, **kwargs)
     return (x - y).pow(p).sum(dim=-1).pow(1 / p)
+
+def entropy(
+        x:torch.Tensor,
+        eps:float=1e-3,
+        **kwargs
+        ) -> torch.Tensor:
+    eps = eps / x.shape[-1]
+    x = x.float()
+    return torch.sum(x * torch.log(x + eps), dim=-1)
+
+def ppl(
+        x:torch.Tensor,
+        labels:torch.LongTensor,
+        masks:torch.Tensor = None,
+        eps:float=1e-2,
+        **kwargs,
+        ) -> torch.Tensor:
+    eps = eps / x.shape[-1]
+    x = x.float() + eps
+    x = x / x.sum(dim=-1, keepdim=True)
+    x = x.gather(-1, labels).squeeze(-1)
+    return torch.exp(torch.mean(-torch.log(x), dim=-1)) if masks is None else torch.exp(torch.sum((-torch.log(x) * masks + eps) / torch.sum(masks, dim=-1), dim=-1))

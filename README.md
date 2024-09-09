@@ -17,6 +17,7 @@
 - `compute_loss`: Callable(model, batch, **kwargs): 规划 model & inputs 计算得到 loss & metrics。
 - `prepare_inputs_fn`: Callable(inputs, **kwargs): 处理 model 即将接受的数据。
 - `exec_eval_fn`: Callable(model, eval_dataloader, train_state, description, **kwargs): 自定义训练中评估过程。
+- `run_train`: Callable(**kwargs)：传入自定义参数
 
 ### 模型和数据 (Models & Datas)
 - `get_model_fn`: Callable(model_args, **kwargs): 定义模型和 tokenizer。

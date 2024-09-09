@@ -232,19 +232,25 @@ class TrainArguments:
     )
 
     def __post_init__(self):
-        accelerator_state_kwargs = {}
-        accelerator_state_kwargs["backend"] = self.ddp_backend
-        accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
-        if self.deepspeed:
-            os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
-        self.distributed_state = PartialState(**accelerator_state_kwargs)
-        if self.deepspeed:
-            del os.environ["ACCELERATE_USE_DEEPSPEED"]
+        if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
+            accelerator_state_kwargs = {}
+            accelerator_state_kwargs["backend"] = self.ddp_backend
+            accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
+            if self.deepspeed:
+                os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
+            self.distributed_state = PartialState(**accelerator_state_kwargs)
+            if self.deepspeed:
+                del os.environ["ACCELERATE_USE_DEEPSPEED"]
+        else:
+            self.distributed_state = None
 
     @contextmanager
     def main_process_first(self):
-        with self.distributed_state.main_process_first():
+        if self.distributed_state is None:
             yield
+        else:
+            with self.distributed_state.main_process_first():
+                yield
 
     def __getitem__(self, key:str):
         return getattr(self, key)        
