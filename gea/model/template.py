@@ -4,7 +4,7 @@ from typing import Callable, List, Dict, Tuple
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
 from ..args import ModelArguments
-from ..utils.tools import get_logger
+from ..utils.tools import get_logger, get_model_details
 
 logger = get_logger(__name__)
 
@@ -90,6 +90,7 @@ def get_model(
         load_model_fn = kwargs.pop("load_model_fn", None)
         if load_model_fn is not None:
             model = load_model_fn(model, model_args=model_args, **kwargs)
+    logger.info(f"\n{get_model_details(model)}")
     return (model, tokenizer, )
 
 

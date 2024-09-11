@@ -306,7 +306,7 @@ class Trainer:
                 self.callback_handler.on_step_begin(state=self.state, sync_on=self.accelerator.sync_gradients, **kwargs)
                 
                 with self.accelerator.accumulate(self.model):
-                    loss, metrics = compute_loss(self.model, batch, **kwargs)
+                    loss, metrics = compute_loss(self.model, batch, **kwargs) if compute_loss is self.compute_loss else compute_loss(self.model, batch, self.state, **kwargs)
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         self.accelerator.unscale_gradients(self.optimizer)

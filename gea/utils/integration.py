@@ -1,4 +1,5 @@
 import importlib
+from typing import Iterable, Dict, List
 
 from torch.utils import tensorboard
 
@@ -103,6 +104,10 @@ class TensorBoardCallback(StateCallback):
             for k, v in logs.items():
                 if isinstance(v, (int, float)):
                     self.tb_writer.add_scalar(k, v, state.global_step)
+                elif isinstance(v, Dict):
+                    self.tb_writer.add_scalars(k, v, state.global_step)
+                elif isinstance(v, (Iterable, List)):
+                    self.tb_writer.add_scalars(k, { i:_v for i, _v in enumerate(v) }, state.global_step)
                 else:
                     logger.warning(
                         "Trainer is attempting to log a value of "
