@@ -2,6 +2,9 @@
 check.ipynb
 create_renum_dataset.py
 
+# ignore any log files
+log/
+
 # ignore any command scripts
 *sh
 
