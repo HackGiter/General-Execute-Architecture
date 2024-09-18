@@ -20,6 +20,12 @@ class TrainArguments:
             "help": "whether to trai or not"
         }
     )
+    do_debug: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "whether to debug or not"
+        }
+    )
     seed: Optional[int] = field(
         default=1234,
         metadata={

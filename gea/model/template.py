@@ -73,24 +73,26 @@ def get_model(
     set `load_model_fn` function if you want to load your model in your own way such as load with parts of pretrained way
     """
     logger.info("Model initialize")
+    model_kwargs = kwargs.pop("model_kwargs", {})
+    load_model_fn:Callable = kwargs.pop("load_model_fn", None)
+
     if model_args.pretrained:
         tokenizer = AutoTokenizer.from_pretrained(model_args.path)
-        model = AutoModel.from_pretrained(model_args.path, **kwargs)
+        model = AutoModel.from_pretrained(model_args.path, **model_kwargs)
     else:
-        pretrained_model_path = kwargs.get("pretrained_model_path", None)
+        pretrained_model_path = model_kwargs.pop("pretrained_model_path", None)
         if pretrained_model_path is None:       
             tokenizer = AutoTokenizer.from_pretrained(model_args.path)
         else:
             tokenizer = AutoTokenizer.from_pretrained(pretrained_model_path)
         config_cls = kwargs.pop("config_cls", AutoConfig)
         model_cls = kwargs.pop("model_cls", AutoModel)
-        config = config_cls.from_pretrained(model_args.path, **kwargs)
-        model = model_cls(config, **kwargs)
+        config = config_cls.from_pretrained(model_args.path, **model_kwargs)
+        model = model_cls(config, **model_kwargs)
         
-        load_model_fn = kwargs.pop("load_model_fn", None)
         if load_model_fn is not None:
-            model = load_model_fn(model, model_args=model_args, **kwargs)
-    logger.info(f"\n{get_model_details(model)}")
+            model = load_model_fn(model, model_args=model_args, pretrained_model_path=pretrained_model_path, **model_kwargs)
+    logger.info(f"\n{get_model_details(model, True)}")
     return (model, tokenizer, )
 
 

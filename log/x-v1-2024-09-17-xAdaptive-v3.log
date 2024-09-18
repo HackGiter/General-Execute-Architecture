@@ -1,0 +1,123 @@
+[[32mINFO[0m|gea.model.template:75] 09/17/2024 16:01:34 >> Model initialize
+[[32mINFO[0m|__main__:33] 09/17/2024 16:01:51 >> Pretrained embed tokens loaded
+[[32mINFO[0m|__main__:37] 09/17/2024 16:01:54 >> Pretrained lm head loaded
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.embed_tokens.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.self_attn.q_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.self_attn.kv_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.self_attn.o_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.mlp.gate_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.mlp.up_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.mlp.down_proj.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.prev_attn_layernorm.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.post_attn_ln_v1.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.decoder.post_attn_ln_v2.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.norm_v1.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> model.norm_v2.weight
+[[34mDEBUG[0m|__main__:47] 09/17/2024 16:01:54 >> lm_head.weight
+[[32mINFO[0m|gea.model.template:95] 09/17/2024 16:01:55 >> 
+xAdaptiveForCausalLM(
+  (model): xAdaptiveModel(
+    (embed_tokens): Embedding(32000, 4096) ( weight:False )
+    (decoder): xAdaptiveDecoderLayer(
+      (self_attn): xAdaptiveAttention(
+        (q_proj): Linear(in_features=4096, out_features=20480, bias=False) ( weight:True )
+        (kv_proj): Linear(in_features=8192, out_features=8192, bias=False) ( weight:True )
+        (o_proj): Linear(in_features=4096, out_features=4096, bias=False) ( weight:True )
+        (rotary_emb): LlamaRotaryEmbedding() ( )
+      )
+      (mlp): xAdaptiveMLP(
+        (gate_proj): Linear(in_features=8192, out_features=11008, bias=False) ( weight:True )
+        (up_proj): Linear(in_features=8192, out_features=11008, bias=False) ( weight:True )
+        (down_proj): Linear(in_features=11008, out_features=4096, bias=False) ( weight:True )
+        (act_fn): SiLU() ( )
+      )
+      (prev_attn_layernorm): LlamaRMSNorm() ( weight:True )
+      (post_attn_ln_v1): LlamaRMSNorm() ( weight:True )
+      (post_attn_ln_v2): LlamaRMSNorm() ( weight:True )
+    )
+    (norm_v1): LlamaRMSNorm() ( weight:True )
+    (norm_v2): LlamaRMSNorm() ( weight:True )
+  )
+  (lm_head): Linear(in_features=4096, out_features=32000, bias=False) ( weight:False )
+)
+[[32mINFO[0m|gea.train.train:63] 09/17/2024 16:01:57 >> Tensoboard tracker initialize
+[[32mINFO[0m|gea.utils.callback:289] 09/17/2024 16:01:57 >> Trainer initialize
+[[32mINFO[0m|gea.train.train:202] 09/17/2024 16:01:57 >> Optimizer initialize: ADAMW
+[[34mDEBUG[0m|__main__:134] 09/17/2024 16:01:57 >> {'lr': 0.00024, 'weight_decay': 0.1, 'betas': (0.9, 0.999), 'eps': 1e-08, 'amsgrad': False, 'maximize': False, 'foreach': None, 'capturable': False, 'differentiable': False, 'fused': None}
+[[32mINFO[0m|gea.train.train:218] 09/17/2024 16:01:57 >> LR scheduler initialize: COSINE_WITH_MIN_LR
+[[32mINFO[0m|gea.train.train:256] 09/17/2024 16:02:01 >>  ***** Running training *****  
+[[32mINFO[0m|gea.train.train:257] 09/17/2024 16:02:01 >>  Num examples = 643,200
+[[32mINFO[0m|gea.train.train:258] 09/17/2024 16:02:01 >>  Num Epochs = 10
+[[32mINFO[0m|gea.train.train:259] 09/17/2024 16:02:01 >>  Instantaneous batch size per device = 2
+[[32mINFO[0m|gea.train.train:261] 09/17/2024 16:02:01 >>  Training with DataParallel so batch size has been adjusted to: 4
+[[32mINFO[0m|gea.train.train:262] 09/17/2024 16:02:01 >>  Total train batch size (w. parallel, distributed & accumulation) = 96
+[[32mINFO[0m|gea.train.train:263] 09/17/2024 16:02:01 >>  Gradient Accumulation steps = 24
+[[32mINFO[0m|gea.train.train:264] 09/17/2024 16:02:01 >>  Total optimization steps = 6,700
+[[32mINFO[0m|gea.train.train:265] 09/17/2024 16:02:01 >>  Number of trainable parameters = 393,236,480
+[[32mINFO[0m|gea.utils.integration:74] 09/17/2024 16:02:01 >> Tensorboard tracker initialize
+  0%|          | 0/6700 [00:00<?, ?it/s][rank1]: Traceback (most recent call last):
+[rank1]:   File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+[rank1]:     return _run_code(code, main_globals, None,
+[rank1]:   File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/runpy.py", line 86, in _run_code
+[rank1]:     exec(code, run_globals)
+[rank1]:   File "/home/lhz/Workplace/General Execute Architecture/gea/self/xAdaptive/v3/xAdaptive_executor.py", line 312, in <module>
+[rank1]:     main()
+[rank1]:   File "/home/lhz/Workplace/General Execute Architecture/gea/self/xAdaptive/v3/xAdaptive_executor.py", line 309, in main
+[rank1]:     run_train(kwargs)
+[rank1]:   File "/home/lhz/Workplace/General Execute Architecture/gea/execute/executor.py", line 39, in run_train
+[rank1]:     trainer.train()
+[rank1]:   File "/home/lhz/Workplace/General Execute Architecture/gea/train/train.py", line 274, in train
+[rank1]:     execute_train_process = self.execute_train_process(
+[rank1]:   File "/home/lhz/Workplace/General Execute Architecture/gea/train/train.py", line 309, in execute_train_process
+[rank1]:     loss, metrics = compute_loss(self.model, batch, **kwargs) if compute_loss is self.compute_loss else compute_loss(self.model, batch, self.state, **kwargs)
+[rank1]: TypeError: Trainer.compute_loss() takes 3 positional arguments but 4 were given
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+[rank0]:     return _run_code(code, main_globals, None,
+[rank0]:   File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/runpy.py", line 86, in _run_code
+[rank0]:     exec(code, run_globals)
+[rank0]:   File "/home/lhz/Workplace/General Execute Architecture/gea/self/xAdaptive/v3/xAdaptive_executor.py", line 312, in <module>
+[rank0]:     main()
+[rank0]:   File "/home/lhz/Workplace/General Execute Architecture/gea/self/xAdaptive/v3/xAdaptive_executor.py", line 309, in main
+[rank0]:     run_train(kwargs)
+[rank0]:   File "/home/lhz/Workplace/General Execute Architecture/gea/execute/executor.py", line 39, in run_train
+[rank0]:     trainer.train()
+[rank0]:   File "/home/lhz/Workplace/General Execute Architecture/gea/train/train.py", line 274, in train
+[rank0]:     execute_train_process = self.execute_train_process(
+[rank0]:   File "/home/lhz/Workplace/General Execute Architecture/gea/train/train.py", line 309, in execute_train_process
+[rank0]:     loss, metrics = compute_loss(self.model, batch, **kwargs) if compute_loss is self.compute_loss else compute_loss(self.model, batch, self.state, **kwargs)
+[rank0]: TypeError: Trainer.compute_loss() takes 3 positional arguments but 4 were given
+  0%|          | 0/6700 [00:07<?, ?it/s]
+W0917 16:02:09.886000 139875588855616 torch/distributed/elastic/multiprocessing/api.py:851] Sending process 318116 closing signal SIGTERM
+E0917 16:02:10.101000 139875588855616 torch/distributed/elastic/multiprocessing/api.py:826] failed (exitcode: 1) local_rank: 1 (pid: 318117) of binary: /home/lhz/miniconda3/envs/workplace/bin/python
+Traceback (most recent call last):
+  File "/home/lhz/miniconda3/envs/workplace/bin/accelerate", line 8, in <module>
+    sys.exit(main())
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/accelerate/commands/accelerate_cli.py", line 48, in main
+    args.func(args)
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/accelerate/commands/launch.py", line 1165, in launch_command
+    multi_gpu_launcher(args)
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/accelerate/commands/launch.py", line 799, in multi_gpu_launcher
+    distrib_run.run(args)
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/torch/distributed/run.py", line 870, in run
+    elastic_launch(
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 132, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/home/lhz/miniconda3/envs/workplace/lib/python3.10/site-packages/torch/distributed/launcher/api.py", line 263, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+gea.self.xAdaptive.v3.xAdaptive_executor FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-09-17_16:02:09
+  host      : zju
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 318117)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

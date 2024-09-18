@@ -1,5 +1,6 @@
 import os
 import math
+from contextlib import contextmanager
 from typing import Callable, Mapping, Union, Tuple, Dict, List, Any, get_origin, get_args
 
 import numpy as np
@@ -199,7 +200,7 @@ class Trainer:
     def prepare_optimizer(self, **kwargs) -> None:
         if self.optimizer is None:
             if self.accelerator.is_main_process:
-                logger.info("Optimizer initialize")
+                logger.info(f"Optimizer initialize: {self.state.optim.upper()}")
             prepare_optimizer_fn = kwargs.pop('prepare_optimizer_fn', None)
             prepare_optimizer_fn = self.kwargs.pop('prepare_optimizer_fn', prepare_optimizer_fn)
             optim_cls = OPTIMIZERS[self.state.optim]
@@ -215,7 +216,7 @@ class Trainer:
     def prepare_lr_scheduler(self, **kwargs)->None:
         if self.lr_scheduler is None:
             if self.accelerator.is_main_process:
-                logger.info("LR scheduler initialize")
+                logger.info(f"LR scheduler initialize: {self.state.lr_scheduler.upper()}")
             prepare_lr_scheduler_fn:Callable = kwargs.pop("prepare_lr_scheduler_fn", None)
             prepare_lr_scheduler_fn:Callable = self.kwargs.pop("prepare_lr_scheduler_fn", None) if prepare_lr_scheduler_fn is None else prepare_lr_scheduler_fn
             import ast
@@ -270,7 +271,7 @@ class Trainer:
             if self.train_args.tensorboard_project is not None else None,
         )
         
-        execute_train_process:Callable = kwargs.pop("execute_train_process", None)
+        execute_train_process:Callable = kwargs.pop("execute_train_process", self.kwargs.get("execute_train_process", None))
         execute_train_process = self.execute_train_process(
             **kwargs,
         ) if execute_train_process is None else execute_train_process(
@@ -288,10 +289,20 @@ class Trainer:
         self.accelerator.end_training()
         self.callback_handler.on_train_end(state=self.state)
 
+    @contextmanager
+    def execute_train_contexts(self, *models):
+        if self.train_args.do_debug:
+            with torch.autograd.set_detect_anomaly(True):
+                with self.accelerator.accumulate(models):
+                    yield
+        else:
+            with self.accelerator.accumulate(models):
+                yield
+
     def execute_train_process(self, **kwargs):
         resume_step = self.resume_from_checkpoint()
 
-        compute_loss:Callable = kwargs.pop("compute_loss", self.compute_loss)
+        compute_loss:Callable = kwargs.pop("compute_loss", self.kwargs.get("compute_loss", self.compute_loss))
         for epoch in range(self.state.global_epoch, self.state.epochs):
             self.callback_handler.on_epoch_begin(state=self.state, **kwargs)
 
@@ -305,8 +316,8 @@ class Trainer:
             for _, batch in enumerate(epoch_iterator):
                 self.callback_handler.on_step_begin(state=self.state, sync_on=self.accelerator.sync_gradients, **kwargs)
                 
-                with self.accelerator.accumulate(self.model):
-                    loss, metrics = compute_loss(self.model, batch, **kwargs) if compute_loss is self.compute_loss else compute_loss(self.model, batch, self.state, **kwargs)
+                with self.execute_train_contexts(self.model):
+                    loss, metrics = compute_loss(self.model, batch, state=self.state, **kwargs)
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         self.accelerator.unscale_gradients(self.optimizer)

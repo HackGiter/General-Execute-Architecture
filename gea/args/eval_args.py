@@ -6,6 +6,13 @@ class EvalArguments:
     """
     Aguments about evaluation: dataset, metrics, inference and etc
     """
+    do_eval: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": "do evaluation during training or not"
+        }
+    )
+
     eval_dataset: Optional[str] = field(
         default=None,
         metadata={

@@ -87,7 +87,7 @@ def get_model_details(model:Union[AutoModel, nn.Module], required_grad:bool=Fals
     child_lines = []
     for key, module in model._modules.items():
         mod_str = get_model_details(module, required_grad)
-        mod_str, lines = _addindent(mod_str, 2)
+        mod_str = _addindent(mod_str, 2)
         child_lines.append('(' + key + '): ' + mod_str)
     lines = extra_lines + child_lines
 
@@ -100,10 +100,10 @@ def get_model_details(model:Union[AutoModel, nn.Module], required_grad:bool=Fals
             main_str += '\n  ' + '\n  '.join(lines) + '\n'
 
     main_str += ')'
-    if len(extra_lines) == 1 and required_grad:
+    if (len(extra_lines) == 1 or len(lines) == 0) and required_grad:
         param_infos = " ( "
         for name, param in model.named_parameters():
             param_infos += f"{name}:{param.requires_grad} "
         param_infos += ")"
-        main_str += param_infos
+        main_str += param_infos if len(param_infos) != 4 else ""
     return main_str

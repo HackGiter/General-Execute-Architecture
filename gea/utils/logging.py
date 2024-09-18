@@ -4,7 +4,6 @@ import logging
 from typing import Any
 from collections.abc import MutableMapping
 
-import torch.distributed as dist
 from logging import LoggerAdapter
 from accelerate.logging import MultiProcessAdapter
 
@@ -44,18 +43,19 @@ class LoggerAdapterWithExtra(LoggerAdapter):
         return msg, kwargs
 
 def get_logger(name: str = None, log_level:str = None) -> logging.LoggerAdapter:
-    if name is None:
-        name = __name__.split(".")[0]
+    name = __name__.split(".")[0] if name is None else name
     logger = logging.getLogger(name)
+
     # 创建控制台处理器
-    if log_level is None:
-        log_level = os.environ.get("ACCELERATE_LOG_LEVEL", None)
+    log_level = os.environ.get("ACCELERATE_LOG_LEVEL", None) if log_level is None else log_level
+    
     if log_level is not None:
         logger.setLevel(log_level.upper())
         logger.root.setLevel(log_level.upper())
     else:
         logger.setLevel(logging.DEBUG)
         logger.root.setLevel(logging.DEBUG)
+
     if not logger.hasHandlers():
         formatter = LevelFormatter(
             fmt="%(prefix)s[%(levelname)s|%(name)s:%(lineno)s] %(asctime)s >> %(message)s", 
@@ -65,7 +65,8 @@ def get_logger(name: str = None, log_level:str = None) -> logging.LoggerAdapter:
         handler.setFormatter(formatter)
         handler.setLevel(logger.level)
         logger.addHandler(handler)
-    if dist.is_initialized():
-        return MultiProcessAdapterWithExtra(logger, {})
-    else:
+
+    if os.environ.get('WORLD_SIZE', 1) == 1:
         return LoggerAdapterWithExtra(logger, {})
+    else:
+        return MultiProcessAdapterWithExtra(logger, {})
