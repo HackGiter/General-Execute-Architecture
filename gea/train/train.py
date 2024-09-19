@@ -411,8 +411,8 @@ class Trainer:
     @torch.inference_mode()
     def execute_eval_process(self, eval_dataloader, **kwargs) -> Dict[str, Any]:        
 
-        execute_metrics:Callable = kwargs.pop("execute_metrics", self.compute_loss)
-        logger.info(f" **** RUNNING {kwargs.get('description', 'EVALUATION')} ****", extra={"prefix":"\n\r"})
+        execute_metrics:Callable = kwargs.pop("execute_metrics", self.kwargs.get("execute_metrics", self.compute_loss))
+        logger.info(f" **** RUNNING {kwargs.pop('description', 'EVALUATION')} ****", extra={"prefix":"\n\r"})
         logger.info(f" NUM EXAMPLES = {len(eval_dataloader)}")
         logger.info(f" BATCH SIZE = {self.train_args.per_device_eval_batch_size * self.accelerator.num_processes}")
         self.callback_handler.on_eval_begin(state=self.state, eval_dataloader=eval_dataloader, **kwargs)
@@ -420,7 +420,7 @@ class Trainer:
         self.model.eval()
         _metrics = {"loss": [], "metrics": {}}
         for _, batch in enumerate(eval_dataloader):
-            loss, metrics = execute_metrics(self.model, batch, **kwargs)
+            loss, metrics = execute_metrics(self.model, batch, state=self.state, **kwargs)
             _metrics["loss"].append(torch.atleast_1d(loss))
             if metrics is not None:
                 for key in metrics:
@@ -431,11 +431,11 @@ class Trainer:
             self.callback_handler.on_eval_step(state=self.state, **kwargs)
 
         _metrics["loss"] = torch.cat(_metrics["loss"], dim=-1)
-        for key, item in _metrics["metrics"]:
+        for key, item in _metrics["metrics"].items():
             _metrics["metrics"][key] = torch.cat(item, dim=-1) if isinstance(item, torch.Tensor) else item
         _metrics = self.accelerator.gather_for_metrics(_metrics)
         _metrics["loss"] = _metrics["loss"].mean().item()
-        for key, item in _metrics["metrics"]:
+        for key, item in _metrics["metrics"].items():
             _metrics["metrics"][key] = item.mean().item() if isinstance(item, torch.Tensor) else np.mean(item)
         
         self.callback_handler.on_eval_end(state=self.state)

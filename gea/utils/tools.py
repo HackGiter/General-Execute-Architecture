@@ -67,7 +67,7 @@ def get_parameter_names(model:Union[AutoModel, nn.Module], forbidden_layer_types
     result += list(model._parameters.keys())
     return result
 
-def get_model_details(model:Union[AutoModel, nn.Module], required_grad:bool=False) -> str:
+def get_model_details(model:Union[AutoModel, nn.Module], details:bool=False) -> str:
     def _addindent(s_:str, numSpaces:int) -> str:
         s = s_.split('\n')
         # don't do anything for single-line stuff
@@ -86,7 +86,7 @@ def get_model_details(model:Union[AutoModel, nn.Module], required_grad:bool=Fals
         extra_lines = extra_repr.split('\n')
     child_lines = []
     for key, module in model._modules.items():
-        mod_str = get_model_details(module, required_grad)
+        mod_str = get_model_details(module, details)
         mod_str = _addindent(mod_str, 2)
         child_lines.append('(' + key + '): ' + mod_str)
     lines = extra_lines + child_lines
@@ -100,10 +100,10 @@ def get_model_details(model:Union[AutoModel, nn.Module], required_grad:bool=Fals
             main_str += '\n  ' + '\n  '.join(lines) + '\n'
 
     main_str += ')'
-    if (len(extra_lines) == 1 or len(lines) == 0) and required_grad:
+    if (len(extra_lines) == 1 or len(lines) == 0) and details:
         param_infos = " ( "
         for name, param in model.named_parameters():
-            param_infos += f"{name}:{param.requires_grad} "
+            param_infos += f"{name}:{param.requires_grad} {param.dtype} {param.device}"
         param_infos += ")"
         main_str += param_infos if len(param_infos) != 4 else ""
     return main_str
