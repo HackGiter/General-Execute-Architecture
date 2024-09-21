@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Union
 from contextlib import contextmanager
 
+from transformers import set_seed
 from transformers.trainer_utils import SchedulerType
 from accelerate import PartialState
 
@@ -238,6 +239,7 @@ class TrainArguments:
     )
 
     def __post_init__(self):
+        set_seed(self.seed)
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             accelerator_state_kwargs = {}
             accelerator_state_kwargs["backend"] = self.ddp_backend

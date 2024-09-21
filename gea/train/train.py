@@ -423,20 +423,20 @@ class Trainer:
             loss, metrics = execute_metrics(self.model, batch, state=self.state, **kwargs)
             _metrics["loss"].append(torch.atleast_1d(loss))
             if metrics is not None:
-                for key in metrics:
-                    if key in _metrics["metrics"]:
-                        _metrics["metrics"].append(metrics[key])
+                for k, v in metrics.items():
+                    if k in _metrics["metrics"]:
+                        _metrics["metrics"][k].append(v)
                     else:
-                        _metrics["metrics"] = [metrics[key]]
+                        _metrics["metrics"][k] = [v]
             self.callback_handler.on_eval_step(state=self.state, **kwargs)
 
         _metrics["loss"] = torch.cat(_metrics["loss"], dim=-1)
-        for key, item in _metrics["metrics"].items():
-            _metrics["metrics"][key] = torch.cat(item, dim=-1) if isinstance(item, torch.Tensor) else item
-        _metrics = self.accelerator.gather_for_metrics(_metrics)
-        _metrics["loss"] = _metrics["loss"].mean().item()
-        for key, item in _metrics["metrics"].items():
-            _metrics["metrics"][key] = item.mean().item() if isinstance(item, torch.Tensor) else np.mean(item)
+        for k, v in _metrics["metrics"].items():
+            _metrics["metrics"][k] = v if isinstance(v, torch.Tensor) else torch.cat(v, dim=0)
+        # _metrics = self.accelerator.gather_for_metrics(_metrics)
+        # _metrics["loss"] = _metrics["loss"].mean().item()
+        # for key, item in _metrics["metrics"].items():
+        #     _metrics["metrics"][key] = item.mean().item() if isinstance(item, torch.Tensor) else np.mean(item)
         
         self.callback_handler.on_eval_end(state=self.state)
 
@@ -460,9 +460,12 @@ class Trainer:
             rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
             self.callback_handler.on_save(state=self.state, **kwargs)
 
-    def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
+    def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = {}, prefix:str = None, **kwargs):
         if self.state.should_log:
-            metrics = {} if metrics is None else metrics
+            metrics = self.accelerator.gather_for_metrics(metrics)
+            for k, v in metrics.items():
+                v = v.mean().item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
+                metrics[k] = v.tolist() if isinstance(v, torch.Tensor) else v
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
@@ -471,7 +474,7 @@ class Trainer:
             metrics["epoch"] = (self.state.global_step / self.state.max_steps) * self.state.epochs
             metrics["loss"] = round(loss, 4)
             if grad_norm is not None:
-                metrics["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                metrics["grad_norm"] = self.accelerator.gather(grad_norm.detach()).item() if isinstance(grad_norm, torch.Tensor) else self.accelerator.gather_for_metrics([grad_norm])
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             if prefix is not None:
                 _metrics = {}
