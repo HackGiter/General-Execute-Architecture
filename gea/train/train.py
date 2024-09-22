@@ -424,21 +424,22 @@ class Trainer:
             _metrics["loss"].append(torch.atleast_1d(loss))
             if metrics is not None:
                 for k, v in metrics.items():
+                    v = v if isinstance(v, torch.Tensor) else torch.stack(v, dim=-1)
                     if k in _metrics["metrics"]:
                         _metrics["metrics"][k].append(v)
                     else:
                         _metrics["metrics"][k] = [v]
+                    logger.debug(k)
             self.callback_handler.on_eval_step(state=self.state, **kwargs)
 
+        logger.debug("END1")
         _metrics["loss"] = torch.cat(_metrics["loss"], dim=-1)
         for k, v in _metrics["metrics"].items():
-            _metrics["metrics"][k] = v if isinstance(v, torch.Tensor) else torch.cat(v, dim=0)
-        # _metrics = self.accelerator.gather_for_metrics(_metrics)
-        # _metrics["loss"] = _metrics["loss"].mean().item()
-        # for key, item in _metrics["metrics"].items():
-        #     _metrics["metrics"][key] = item.mean().item() if isinstance(item, torch.Tensor) else np.mean(item)
-        
+            v = torch.stack(v, 0).mean(0)
+            _metrics["metrics"][k] = v if v.dim() == 0 else torch.unbind(v)
+            logger.debug(k)
         self.callback_handler.on_eval_end(state=self.state)
+        logger.debug("END2")
 
         return _metrics
 
@@ -463,9 +464,13 @@ class Trainer:
     def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = {}, prefix:str = None, **kwargs):
         if self.state.should_log:
             metrics = self.accelerator.gather_for_metrics(metrics)
+            logger.debug("LOG1")
             for k, v in metrics.items():
-                v = v.mean().item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
+                v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
                 metrics[k] = v.tolist() if isinstance(v, torch.Tensor) else v
+                logger.debug(k)
+            logger.debug(loss)
+            logger.debug(metrics)
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
@@ -482,6 +487,7 @@ class Trainer:
                     _metrics[f"{prefix}_{k}"] = v
                 metrics = _metrics
             self.callback_handler.on_log(state=self.state, logs=metrics, **kwargs)
+            logger.debug("LOG2")
 
     def resume_from_checkpoint(self) -> int:
         if self.train_args.resume_from_checkpoint is not None:
