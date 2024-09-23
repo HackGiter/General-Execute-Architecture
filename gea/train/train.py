@@ -480,7 +480,7 @@ class Trainer:
                     v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
                     _metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
             else:
-                _metrics = None
+                _metrics = {}
 
             metrics = {}
             if isinstance(loss, torch.Tensor):
