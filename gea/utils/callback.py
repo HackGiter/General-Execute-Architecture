@@ -75,7 +75,6 @@ class TrainState(GeneralState):
     save_steps: int = 0
     train_batch_size: int = 0
     total_train_batch_size: int = 0
-    num_train_epochs: int = 0
     total_flops: float = 0
     best_metric: Optional[float] = None
     best_model_checkpoint: Optional[str] = None

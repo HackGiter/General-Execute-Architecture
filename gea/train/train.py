@@ -225,14 +225,14 @@ class Trainer:
             self.lr_scheduler = get_scheduler(
                 name=self.state.lr_scheduler,
                 optimizer=self.optimizer,
-                num_warmup_steps=self.state.warmup_steps,
-                num_training_steps=self.state.max_steps,
+                num_warmup_steps=self.state.warmup_steps * self.accelerator.num_processes,
+                num_training_steps=self.state.max_steps * self.accelerator.num_processes,
                 scheduler_specific_kwargs=lr_scheduler_kwargs,
             ) if prepare_lr_scheduler_fn is None else prepare_lr_scheduler_fn(
                 name=self.state.lr_scheduler,
                 optimizer=self.optimizer,
-                num_warmup_steps=self.state.warmup_steps,
-                num_training_steps=self.state.max_steps,
+                num_warmup_steps=self.state.warmup_steps * self.accelerator.num_processes,
+                num_training_steps=self.state.max_steps * self.accelerator.num_processes,
                 scheduler_specific_kwargs=lr_scheduler_kwargs,
                 **kwargs,
             )

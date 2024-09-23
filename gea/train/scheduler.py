@@ -18,7 +18,6 @@ from transformers import (
 )
 from transformers.optimization import (
     get_reduce_on_plateau_schedule,
-    get_cosine_with_min_lr_schedule_with_warmup,
     _get_cosine_schedule_with_warmup_lr_lambda,
 )
 
