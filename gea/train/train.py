@@ -472,13 +472,15 @@ class Trainer:
             
             self.callback_handler.on_save(state=self.state, **kwargs)
 
-    def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = {}, prefix:str = None, **kwargs):
+    def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
         if self.state.should_log:
-
-            _metrics = self.accelerator.gather_for_metrics(metrics)
-            for k, v in _metrics.items():
-                v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
-                _metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
+            if metrics is not None:
+                _metrics = self.accelerator.gather_for_metrics(metrics)
+                for k, v in _metrics.items():
+                    v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
+                    _metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
+            else:
+                _metrics = None
 
             metrics = {}
             if isinstance(loss, torch.Tensor):
@@ -505,12 +507,14 @@ class Trainer:
         if self.train_args.resume_from_checkpoint is not None:
             logger.info(f"Resume from checkpoint: {self.train_args.resume_from_checkpoint.split('/')[0]}")
             self.accelerator.load_state(self.train_args.resume_from_checkpoint)
+            self.state = self.state.load_from_json(os.path.join(self.train_args.resume_from_checkpoint, 'train_state.json'))
+
             import re
             match = re.search(r"checkpoint-(\d+)-(\d+)", self.train_args.resume_from_checkpoint)
             self.state.global_epoch = int(match.group(1))
             self.state.global_step = int(match.group(2))
             logger.info(f"Resuming training from epoch {self.state.global_epoch}")
             logger.info(f"Resuming training from step {self.state.global_step}")
-            self.state = self.state.load_from_json(os.path.join(self.train_args.resume_from_checkpoint, 'train_state.json'))
+
             return self.state.global_step * self.train_args.gradient_accumulation_steps - self.state.global_epoch * len(self.train_dataloader)
         return 0
