@@ -475,11 +475,12 @@ class Trainer:
     def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = {}, prefix:str = None, **kwargs):
         if self.state.should_log:
 
-            metrics = self.accelerator.gather_for_metrics(metrics)
-            for k, v in metrics.items():
+            _metrics = self.accelerator.gather_for_metrics(metrics)
+            for k, v in _metrics.items():
                 v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
-                metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
+                _metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
 
+            metrics = {}
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
@@ -492,6 +493,7 @@ class Trainer:
                 metrics["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             
+            metrics = {**metrics, **_metrics}
             if prefix is not None:
                 _metrics = {}
                 for k, v in metrics.items():

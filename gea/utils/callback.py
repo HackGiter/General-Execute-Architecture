@@ -32,7 +32,7 @@ class Optim(str, Enum):
 
 @dataclass
 class GeneralState:
-    global_step: int = 1
+    global_step: int = 0
     logging_steps: int = 0
     log_history: List[Dict[str, float]] = None
     is_local_process_zero: bool = True
@@ -43,11 +43,18 @@ class GeneralState:
         if self.log_history is None:
             self.log_history = []
         if self.state_callbacks is None:
-            self.state_callbacks = {}
+            self.state_callbacks = []
+        else:
+            state_callbacks = []
+            for callback in self.state_callbacks:
+                name = callback.__class__.__name__
+                if name not in state_callbacks:
+                    state_callbacks.append(name)
+            self.state_callbacks = state_callbacks
 
     def save_to_json(self, json_path: str):
         """Save the content of this instance in JSON format inside `json_path`."""
-        logger.debug(self)
+        logger.debug(f"{self}")
         json_string = json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True) + "\n"
         with open(json_path, "w", encoding="utf-8") as f:
             f.write(json_string)
@@ -293,12 +300,12 @@ class TrainStateCallback(StateCallback):
         state.global_epoch += 1
 
     def on_step_begin(self, state:TrainState, sync_on:bool, **kwargs):
-        state.global_step += sync_on
         state.should_log = False
         state.should_eval = False
         state.should_save = False
     
     def on_step_end(self, state:TrainState, sync_on:bool, **kwargs):
+        state.global_step += sync_on
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
@@ -327,7 +334,7 @@ class TrainStateCallback(StateCallback):
 
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
         state.should_log = False
-        state.log_history.append(logs)
+        state.log_history.append({**logs, **{"step": state.global_step}})
         if state.is_world_process_zero and self.training_bar is not None:
             logs = copy.deepcopy(logs)
             if "epoch" in logs:
@@ -336,7 +343,6 @@ class TrainStateCallback(StateCallback):
                 logs["eval_epoch"] = round(logs["eval_epoch"], 2)
             self.training_bar.write(str(logs))
             
-
     def on_save(self, state:TrainState, **kwagrs):
         state.should_save = False
 
