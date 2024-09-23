@@ -47,6 +47,7 @@ class GeneralState:
 
     def save_to_json(self, json_path: str):
         """Save the content of this instance in JSON format inside `json_path`."""
+        logger.debug(self)
         json_string = json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True) + "\n"
         with open(json_path, "w", encoding="utf-8") as f:
             f.write(json_string)
@@ -280,9 +281,9 @@ class TrainStateCallback(StateCallback):
         self.current_step = 0
 
     def on_eval_begin(self, state:TrainState, eval_dataloader=None, **kwargs):
+        state.should_log = True
         if state.is_world_process_zero and eval_dataloader is not None:
             self.evaluation_bar = tqdm(total=len(eval_dataloader), leave=self.training_bar is None, dynamic_ncols=True)
-            state.should_log = True
 
     def on_init(self, state:TrainState, **kwargs):
         if state.is_world_process_zero:
@@ -325,6 +326,7 @@ class TrainStateCallback(StateCallback):
                 self.evaluation_bar.update(1)
 
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
+        state.should_log = False
         state.log_history.append(logs)
         if state.is_world_process_zero and self.training_bar is not None:
             logs = copy.deepcopy(logs)
@@ -333,18 +335,18 @@ class TrainStateCallback(StateCallback):
             elif "eval_epoch" in logs:
                 logs["eval_epoch"] = round(logs["eval_epoch"], 2)
             self.training_bar.write(str(logs))
-            state.should_log = False
+            
 
     def on_save(self, state:TrainState, **kwagrs):
         state.should_save = False
 
     def on_eval_end(self, state:TrainState, **kwargs):
+        state.should_log = True
+        state.should_eval = False
         if state.is_world_process_zero:
             if self.evaluation_bar is not None:
                 self.evaluation_bar.close()
             self.evaluation_bar = None
-            state.should_eval = False
-            state.should_log = True
 
     def on_train_end(self, state:TrainState, **kwargs):
         if state.is_world_process_zero:

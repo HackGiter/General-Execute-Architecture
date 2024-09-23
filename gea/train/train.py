@@ -27,7 +27,7 @@ from ..utils.tools import rotate_checkpoints
 from ..utils.logging import get_logger
 
 from transformers.trainer_utils import enable_full_determinism
-from transformers.trainer_pt_utils import get_model_param_count
+from transformers.trainer_pt_utils import get_model_param_count, remove_dummy_checkpoint
 
 logger = get_logger(__name__)
 
@@ -407,6 +407,7 @@ class Trainer:
                     }
                     kwargs.update(exec_eval_params)
                     self.do_log(**exec_eval_fn(**kwargs))
+            torch.cuda.empty_cache()
 
     @torch.inference_mode()
     def execute_eval_process(self, eval_dataloader, **kwargs) -> Dict[str, Any]:        
@@ -429,17 +430,13 @@ class Trainer:
                         _metrics["metrics"][k].append(v)
                     else:
                         _metrics["metrics"][k] = [v]
-                    logger.debug(k)
             self.callback_handler.on_eval_step(state=self.state, **kwargs)
 
-        logger.debug("END1")
         _metrics["loss"] = torch.cat(_metrics["loss"], dim=-1)
         for k, v in _metrics["metrics"].items():
             v = torch.stack(v, 0).mean(0)
-            _metrics["metrics"][k] = v if v.dim() == 0 else torch.unbind(v)
-            logger.debug(k)
+            _metrics["metrics"][k] = v if v.dim() == 0 else list(torch.unbind(v))
         self.callback_handler.on_eval_end(state=self.state)
-        logger.debug("END2")
 
         return _metrics
 
@@ -449,45 +446,58 @@ class Trainer:
                 self.train_args.project,
                 f"checkpoint-{self.state.global_epoch}-{self.state.global_step}"
             )
+
             if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
-                self.accelerator.unwrap_model(self.model).save_pretrained(
-                    output_dir, 
-                    state_dict=self.accelerator.get_state_dict(self.model),
-                    safe_serialization=True,
-                )
-                self.model.save_checkpoint(output_dir)
+                if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
+                    state_dict = self.accelerator.get_state_dict(self.model) if self.model.zero_gather_16bit_weights_on_model_save() else {}
+                else:
+                    state_dict = self.accelerator.get_state_dict(self.model)
+                if self.accelerator.is_main_process:
+                    self.accelerator.unwrap_model(self.model).save_pretrained(
+                        output_dir, 
+                        state_dict=state_dict,
+                        safe_serialization=True,
+                    )
+                if len(state_dict) == 0:
+                    remove_dummy_checkpoint(self.accelerator.is_main_process, output_dir, ['pytorch_model.bin', 'model.safetensors'])
+                    self.model.save_checkpoint(output_dir)
             else:
                 self.accelerator.save_state(output_dir)
             rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
+
+            if self.accelerator.is_main_process:
+                self.state.save_to_json(os.path.join(output_dir, 'train_state.json'))
+                if self.tokenizer is not None:
+                    self.tokenizer.save_pretrained(output_dir)
+            
             self.callback_handler.on_save(state=self.state, **kwargs)
 
     def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = {}, prefix:str = None, **kwargs):
         if self.state.should_log:
+
             metrics = self.accelerator.gather_for_metrics(metrics)
-            logger.debug("LOG1")
             for k, v in metrics.items():
                 v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
-                metrics[k] = v.tolist() if isinstance(v, torch.Tensor) else v
-                logger.debug(k)
-            logger.debug(loss)
-            logger.debug(metrics)
+                metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
+
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
             else:
                 loss = np.mean(self.accelerator.gather_for_metrics([loss]))
+
             metrics["epoch"] = (self.state.global_step / self.state.max_steps) * self.state.epochs
             metrics["loss"] = round(loss, 4)
             if grad_norm is not None:
-                metrics["grad_norm"] = self.accelerator.gather(grad_norm.detach()).item() if isinstance(grad_norm, torch.Tensor) else self.accelerator.gather_for_metrics([grad_norm])
+                metrics["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
+            
             if prefix is not None:
                 _metrics = {}
                 for k, v in metrics.items():
                     _metrics[f"{prefix}_{k}"] = v
                 metrics = _metrics
             self.callback_handler.on_log(state=self.state, logs=metrics, **kwargs)
-            logger.debug("LOG2")
 
     def resume_from_checkpoint(self) -> int:
         if self.train_args.resume_from_checkpoint is not None:
@@ -497,7 +507,8 @@ class Trainer:
             match = re.search(r"checkpoint-(\d+)-(\d+)", self.train_args.resume_from_checkpoint)
             self.state.global_epoch = int(match.group(1))
             self.state.global_step = int(match.group(2))
-            logger.info(f"Continuing training from epoch {self.state.global_epoch}")
-            logger.info(f"Continuing training from step {self.state.global_step}")
+            logger.info(f"Resuming training from epoch {self.state.global_epoch}")
+            logger.info(f"Resuming training from step {self.state.global_step}")
+            self.state = self.state.load_from_json(os.path.join(self.train_args.resume_from_checkpoint, 'train_state.json'))
             return self.state.global_step * self.train_args.gradient_accumulation_steps - self.state.global_epoch * len(self.train_dataloader)
         return 0
