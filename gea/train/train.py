@@ -346,6 +346,7 @@ class Trainer:
             self.callback_handler.on_epoch_end(state=self.state, **kwargs)
             if self.state.should_stop:
                 break
+        self.do_save(**kwargs)
 
     def prepare_inputs(self, data: Union[torch.Tensor, Any], **kwargs) -> Union[torch.Tensor, Any]:
         if isinstance(data, Mapping):
