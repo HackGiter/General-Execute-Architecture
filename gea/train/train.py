@@ -479,7 +479,7 @@ class Trainer:
                 _metrics = self.accelerator.gather_for_metrics(metrics)
                 for k, v in _metrics.items():
                     v = v.mean(-1).item() if isinstance(v, torch.Tensor) else torch.stack(v, dim=0).mean(-1)
-                    _metrics[k] = v.cpu().numpy().tolist() if isinstance(v, torch.Tensor) else v
+                    _metrics[k] = [round(_v, 6) for _v in v.cpu().numpy().tolist()] if isinstance(v, torch.Tensor) else round(v, 6)
             else:
                 _metrics = {}
 
@@ -493,7 +493,7 @@ class Trainer:
             metrics["epoch"] = (self.state.global_step / self.state.max_steps) * self.state.epochs
             metrics["loss"] = round(loss, 4)
             if grad_norm is not None:
-                metrics["grad_norm"] = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                metrics["grad_norm"] = round(grad_norm.detach().item(), 5) if isinstance(grad_norm, torch.Tensor) else round(grad_norm, 5)
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             
             metrics = {**metrics, **_metrics}
