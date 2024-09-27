@@ -1,5 +1,6 @@
 import os
 import math
+import random
 from contextlib import contextmanager
 from typing import Callable, Mapping, Union, Tuple, Dict, List, Any, get_origin, get_args
 
@@ -443,35 +444,51 @@ class Trainer:
 
     def do_save(self, **kwargs):
         if self.state.should_save:
+            logger.info(f" **** SAVING checkpoint-{self.state.global_epoch}-{self.state.global_step} ****", extra={"prefix":"\n\r"})
             output_dir = os.path.join(
                 self.train_args.project,
                 f"checkpoint-{self.state.global_epoch}-{self.state.global_step}"
             )
-
-            if self.accelerator.distributed_type == DistributedType.DEEPSPEED:
+            self.accelerator.save_state(output_dir)
+            
+            if self.accelerator.distributed_type == DistributedType.DEEPSPEED and self.state.should_stop:
+                
                 if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
                     state_dict = self.accelerator.get_state_dict(self.model) if self.model.zero_gather_16bit_weights_on_model_save() else {}
                 else:
                     state_dict = self.accelerator.get_state_dict(self.model)
-                if self.accelerator.is_main_process:
-                    self.accelerator.unwrap_model(self.model).save_pretrained(
-                        output_dir, 
-                        state_dict=state_dict,
-                        safe_serialization=True,
-                    )
+                self.accelerator.unwrap_model(self.model).save_pretrained(
+                    self.train_args.project, 
+                    state_dict=state_dict,
+                    is_main_process=self.accelerator.is_main_process,
+                    save_function=self.accelerator.save,
+                    safe_serialization=True,
+                )
                 if len(state_dict) == 0:
-                    remove_dummy_checkpoint(self.accelerator.is_main_process, output_dir, ['pytorch_model.bin', 'model.safetensors'])
+                    remove_dummy_checkpoint(self.accelerator.is_main_process, self.train_args.project, ['pytorch_model.bin', 'model.safetensors'])
                     self.model.save_checkpoint(output_dir)
-            else:
-                self.accelerator.save_state(output_dir)
-            rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
 
-            if self.accelerator.is_main_process:
-                self.state.save_to_json(os.path.join(output_dir, 'train_state.json'))
-                if self.tokenizer is not None:
-                    self.tokenizer.save_pretrained(output_dir)
+                if self.accelerator.is_main_process:
+                    self.state.save_to_json(os.path.join(output_dir, 'train_state.json'))
+                    if self.tokenizer is not None:
+                        self.tokenizer.save_pretrained(output_dir)
+
+            rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
             
             self.callback_handler.on_save(state=self.state, **kwargs)
+
+    def save_rng_state(self, output_dir:str):
+        rng_states = {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "cpu": torch.random.get_rng_state(),
+        }
+        if self.accelerator.num_processes <= 1:
+            rng_states["cuda"] = torch.cuda.random.get_rng_state()
+            torch.save(rng_states, os.path.join(output_dir, "rng_state.pth"))
+        else:
+            rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
+            torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.accelerator.process_index}.pth"))
 
     def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
         if self.state.should_log:

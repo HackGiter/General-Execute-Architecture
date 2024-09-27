@@ -324,7 +324,7 @@ class TrainStateCallback(StateCallback):
         ):
             state.should_save = True  
         state.should_stop = (state.global_step == state.max_steps)
-        state.should_save = state.should_save or state.should_stop
+        state.should_save = (state.should_save or state.should_stop)
 
     def on_eval_step(self, state:TrainState, **kwargs):
         if state.is_world_process_zero:
