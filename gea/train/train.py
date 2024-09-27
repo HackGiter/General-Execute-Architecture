@@ -340,8 +340,9 @@ class Trainer:
                     self.do_evaluate(**kwargs)
                     self.do_save(**kwargs)
                 
-                if self.state.should_stop and not self.accelerator.sync_gradients:
-                    self.accelerator.gradient_state._set_sync_gradients(True)
+                if self.state.should_stop:
+                    if not self.accelerator.sync_gradients:
+                        self.accelerator.gradient_state._set_sync_gradients(True)
                     break
             
             self.callback_handler.on_epoch_end(state=self.state, **kwargs)
