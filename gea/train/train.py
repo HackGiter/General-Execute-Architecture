@@ -339,13 +339,15 @@ class Trainer:
                     self.do_log(loss=loss, grad_norm=grad_norm, metrics=metrics, **kwargs)
                     self.do_evaluate(**kwargs)
                     self.do_save(**kwargs)
+                    print(self.state.should_save)
                 
                 if self.state.should_stop:
                     if not self.accelerator.sync_gradients:
                         self.accelerator.gradient_state._set_sync_gradients(True)
                     break
-            
+            print(self.state.should_save)
             self.callback_handler.on_epoch_end(state=self.state, **kwargs)
+            print(self.state.should_save)
             if self.state.should_stop:
                 self.do_save(**kwargs)
                 break
@@ -451,11 +453,14 @@ class Trainer:
                 f"checkpoint-{self.state.global_epoch}-{self.state.global_step}"
             )
             self.accelerator.save_state(output_dir)
+            if self.accelerator.is_main_process:
+                self.state.save_to_json(os.path.join(self.train_args.project, 'train_state.json'))
             
             if self.accelerator.distributed_type == DistributedType.DEEPSPEED and self.state.should_stop:
                 
                 if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
-                    state_dict = self.accelerator.get_state_dict(self.model) if self.model.zero_gather_16bit_weights_on_model_save() else {}
+                    logger.debug(f"{self.accelerator.deepspeed_config}")
+                    state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config.zero3_save_16bit_model else {}
                 else:
                     state_dict = self.accelerator.get_state_dict(self.model)
                 self.accelerator.unwrap_model(self.model).save_pretrained(
@@ -467,12 +472,10 @@ class Trainer:
                 )
                 if len(state_dict) == 0:
                     remove_dummy_checkpoint(self.accelerator.is_main_process, self.train_args.project, ['pytorch_model.bin', 'model.safetensors'])
-                    self.model.save_checkpoint(output_dir)
+                    self.model.save_checkpoint(self.train_args.project)
 
-                if self.accelerator.is_main_process:
-                    self.state.save_to_json(os.path.join(output_dir, 'train_state.json'))
-                    if self.tokenizer is not None:
-                        self.tokenizer.save_pretrained(output_dir)
+                if self.accelerator.is_main_process and self.tokenizer is not None:
+                    self.tokenizer.save_pretrained(self.train_args.project)
 
             rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
             
