@@ -460,7 +460,7 @@ class Trainer:
                 
                 if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
                     logger.debug(f"{self.accelerator.deepspeed_config}")
-                    state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config.zero3_save_16bit_model else {}
+                    state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config.stage3_gather_16bit_weights_on_model_save else {}
                 else:
                     state_dict = self.accelerator.get_state_dict(self.model)
                 self.accelerator.unwrap_model(self.model).save_pretrained(
