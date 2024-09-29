@@ -7,12 +7,14 @@ log/
 
 # ignore any command scripts
 *sh
+!example.sh
 
 # ignore any .ipynb
 *ipynb 
 
 # ignore self folder
-gea/self/
+gea/self/*
+!gea/self/example/
 
 # ignore Python compile
 *.pyc
