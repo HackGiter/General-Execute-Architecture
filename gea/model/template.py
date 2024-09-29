@@ -66,6 +66,18 @@ register_template(
     resp_template=lambda response, bos_token, eos_token: f"{response} {eos_token}"
 )
 
+register_template(
+    name="empty",
+    sys_tokens=[],
+    inst_tokens=[],
+    bos_token='',
+    eos_token='',
+    sys_prompt=None,
+    sys_template=lambda sys_prompt, sys_tokens, bos_token, eos_token: "",
+    inst_template=lambda instruction, inst_tokens, sys_prompt, bos_token, eos_token: f"{instruction}",
+    resp_template=lambda response, bos_token, eos_token: f"{response}"
+)
+
 def get_model(
         model_args:ModelArguments, 
         **kwargs) -> Tuple[AutoModel, AutoTokenizer]:
