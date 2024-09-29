@@ -457,8 +457,7 @@ class Trainer:
             if self.accelerator.distributed_type == DistributedType.DEEPSPEED and self.state.should_stop:
                 
                 if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
-                    # state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config['stage3_gather_16bit_weights_on_model_save'] else {}
-                    state_dict = {}
+                    state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config["zero_optimization"]['stage3_gather_16bit_weights_on_model_save'] else {}
                 else:
                     state_dict = self.accelerator.get_state_dict(self.model)
                 self.accelerator.unwrap_model(self.model).save_pretrained(
@@ -468,7 +467,7 @@ class Trainer:
                     save_function=self.accelerator.save,
                     safe_serialization=True,
                 )
-                if len(state_dict) == 0:
+                if state_dict is not None and len(state_dict) == 0:
                     remove_dummy_checkpoint(self.accelerator.is_main_process, self.train_args.project, ['pytorch_model.bin', 'model.safetensors'])
                     self.model.save_checkpoint(self.train_args.project)
 
