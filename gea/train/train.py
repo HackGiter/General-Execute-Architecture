@@ -339,15 +339,13 @@ class Trainer:
                     self.do_log(loss=loss, grad_norm=grad_norm, metrics=metrics, **kwargs)
                     self.do_evaluate(**kwargs)
                     self.do_save(**kwargs)
-                    print(self.state.should_save)
                 
                 if self.state.should_stop:
                     if not self.accelerator.sync_gradients:
                         self.accelerator.gradient_state._set_sync_gradients(True)
                     break
-            print(self.state.should_save)
+
             self.callback_handler.on_epoch_end(state=self.state, **kwargs)
-            print(self.state.should_save)
             if self.state.should_stop:
                 self.do_save(**kwargs)
                 break
@@ -459,8 +457,8 @@ class Trainer:
             if self.accelerator.distributed_type == DistributedType.DEEPSPEED and self.state.should_stop:
                 
                 if self.accelerator.deepspeed_config["zero_optimization"]["stage"] == 3:
-                    logger.debug(f"{self.accelerator.deepspeed_config}")
-                    state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config['stage3_gather_16bit_weights_on_model_save'] else {}
+                    # state_dict = self.accelerator.get_state_dict(self.model) if self.accelerator.deepspeed_config['stage3_gather_16bit_weights_on_model_save'] else {}
+                    state_dict = {}
                 else:
                     state_dict = self.accelerator.get_state_dict(self.model)
                 self.accelerator.unwrap_model(self.model).save_pretrained(
