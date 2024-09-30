@@ -307,7 +307,8 @@ def get_dataset(
         max_length:int = None,
         eos_last:bool = True,
         **kwargs) -> Dict[str, Dataset]:
-    template = MODEL_TEMPLATES[model_args.model]
+    
+    template = MODEL_TEMPLATES[model_args.model] if model_args.model in MODEL_TEMPLATES else None
     train_dataset_profiles = [DATASET_PROFILES[item] for item in data_args.dataset]
     if eval_args.eval_dataset is not None:
         eval_dataset_profiles = [DATASET_PROFILES[item] for item in eval_args.eval_dataset]
@@ -318,20 +319,28 @@ def get_dataset(
         for profile in train_dataset_profiles:
             logger.info(f"Loading {profile.name}")
             train_dataset = load_datasets(profile, **dataset_kwargs)
-            train_dataset = align_dataset(
-                dataset=train_dataset, 
-                profile=profile,
-                desc=f"Aligning {profile.name}",
-                **dataset_kwargs)
-            train_dataset = preprocess_dataset(
-                dataset=train_dataset, 
-                tokenizer=tokenizer, 
-                sys_prompt=template.sys_prompt if data_args.with_sys_prompt else None, 
-                max_length=max_length,
-                eos_last=eos_last,
-                template=template,
-                desc=f"Preprocessing {profile.name}",
-                **dataset_kwargs
+            if template is not None:
+                train_dataset = align_dataset(
+                    dataset=train_dataset, 
+                    profile=profile,
+                    desc=f"Aligning {profile.name}",
+                    **dataset_kwargs)
+                train_dataset = preprocess_dataset(
+                    dataset=train_dataset, 
+                    tokenizer=tokenizer, 
+                    sys_prompt=template.sys_prompt if template is not None and data_args.with_sys_prompt else None, 
+                    max_length=max_length,
+                    eos_last=eos_last,
+                    template=template,
+                    desc=f"Preprocessing {profile.name}",
+                    **dataset_kwargs
+                    )
+            else:
+                train_dataset = train_dataset.map(
+                    partial(tokenizer.apply_chat_template,),
+                    remove_columns=train_dataset.column_names,
+                    desc=f"Preprocessing {profile.name}",
+                    **kwargs,
                 )
             log_print_example(
                 dataset=train_dataset,
