@@ -1,7 +1,7 @@
 import os
 from functools import partial
 from dataclasses import dataclass
-from typing import Literal, Callable, Iterable, Union, Dict, List, Any
+from typing import Literal, Callable, Union, Dict, List, Any
 
 import torch
 from transformers import AutoTokenizer
@@ -11,56 +11,9 @@ from ..args import TrainArguments, EvalArguments, DataArguments, ModelArguments
 from ..utils.logging import get_logger
 from ..model.template import Template, MODEL_TEMPLATES
 
+from .align import align_sequence, align_dialogue, align_multi_turn
+
 logger = get_logger(__name__)
-
-def align_sequence(examples: Dict[str, Any], contexts: str) -> Dict[str, str]:
-    return { 'contexts': examples[contexts] }
-
-def align_dialogue(examples: Dict[str, Any], 
-                   contexts: List[str], 
-                   instructions: List[str], 
-                   responses: List[str], 
-                   conversations: List[str] = None,
-                   roles: List[str] = None) -> Dict[str, List[str]]:
-    _contexts, _instructions, _responses = [], [], []
-    if roles is None:
-        if contexts is not None:
-            _contexts = [examples[ctx] for ctx in contexts]
-        if instructions is not None:
-            _instructions = [examples[instr] for instr in instructions]
-        if responses is not None:
-            _responses = [examples[resp] for resp in responses]
-    else:
-        if contexts is not None:
-            for ctx in contexts:
-                _contexts += [item[conversations[0]] for item in examples[ctx] if item[conversations[1]] == roles[0]]
-        if instructions is not None:
-            for instr in instructions:
-                _instructions += [item[conversations[0]] for item in examples[instr] if item[conversations[1]] == roles[0]]
-        if responses is not None:
-            for resp in responses:
-                _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
-    return { 'contexts':_contexts, 'instructions':_instructions, 'responses':_responses }
-
-def align_multi_turn(examples: Dict[str, Any], 
-                   contexts: List[str], 
-                   instructions: List[str], 
-                   responses: List[str], 
-                   conversations: List[str] = None,
-                   roles: List[str] = None) -> Dict[str, List[str]]:
-    if contexts is not None:
-        _contexts = []
-        for ctx in contexts:
-            _contexts += [item[conversations[0]] for item in examples[ctx] if item[conversations[1]] == roles[0]]
-    if instructions is not None:
-        _instructions = []
-        for instr in instructions:
-            _instructions += [item[conversations[0]] for item in examples[instr] if item[conversations[1]] == roles[0]]
-    if responses is not None:
-        _responses = []
-        for resp in responses:
-            _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
-    return { 'contexts':_contexts, 'instructions':_instructions, 'responses':_responses }
 
 def get_prompts(
         example: Dict[str, Any],
@@ -71,8 +24,8 @@ def get_prompts(
         eos_last:bool = True,
         concatenated:bool = True,
         **kwargs) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
-    instructions: List[str] = example['instructions']
-    responses: List[str] = example['responses']
+    instructions: List[str] = example["instructions"]
+    responses: List[str] = example["responses"]
     sys_prompt = "" if sys_prompt is None else template.get_sys_prompt(sys_prompt)
     instructions = [
         template.get_inst_prompt(item.strip(), sys_prompt) if i == 0 \
@@ -86,35 +39,35 @@ def get_prompts(
     instructions = [
         tokenizer(
             item, 
-            return_tensors='pt',
+            return_tensors="pt",
             add_special_tokens=False
         ) for item in instructions
     ]
     responses = [
         tokenizer(
             item,
-            return_tensors='pt',
+            return_tensors="pt",
             add_special_tokens=False
         ) for item in responses
     ]
     if len(instructions) != 0 and len(responses) != 0:
         input_ids = torch.cat(
-            [torch.cat((instr['input_ids'], label['input_ids']), dim=-1) for instr, label in zip(instructions, responses)] + 
+            [torch.cat((instr["input_ids"], label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
             ([] if len(instructions) == len(responses) else 
-             ([item['input_ids'] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item['input_ids'] for item in instructions[len(responses):]]))
+             ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
+              [item["input_ids"] for item in instructions[len(responses):]]))
         , dim=-1)
         labels = torch.cat(
-            [torch.cat((torch.zeros_like(instr['input_ids']), label['input_ids']), dim=-1) for instr, label in zip(instructions, responses)] + 
+            [torch.cat((torch.zeros_like(instr["input_ids"]), label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
             ([] if len(instructions) == len(responses) else 
-             ([item['input_ids'] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item['input_ids'] for item in instructions[len(responses):]]))
+             ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
+              [item["input_ids"] for item in instructions[len(responses):]]))
         , dim=-1)
         attention_mask = torch.cat(
-            [torch.cat((instr['attention_mask'], label['attention_mask']), dim=-1) for instr, label in zip(instructions, responses)] + 
+            [torch.cat((instr["attention_mask"], label["attention_mask"]), dim=-1) for instr, label in zip(instructions, responses)] + 
             ([] if len(instructions) == len(responses) else 
-             ([item['attention_mask'] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item['attention_mask'] for item in instructions[len(responses):]]))
+             ([item["attention_mask"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
+              [item["attention_mask"] for item in instructions[len(responses):]]))
         , dim=-1)
         if max_length is not None:
             input_ids = input_ids[:, :max_length]
@@ -123,44 +76,45 @@ def get_prompts(
     else:
         instructions = instructions if len(instructions) != 0 else responses
         if concatenated:
-            input_ids = torch.cat([item['input_ids'] for item in instructions], dim=-1)
+            input_ids = torch.cat([item["input_ids"] for item in instructions], dim=-1)
             labels = input_ids
-            attention_mask = torch.cat([item['attention_mask'] for item in instructions], dim=-1)
+            attention_mask = torch.cat([item["attention_mask"] for item in instructions], dim=-1)
         else:
-            input_ids = [item['input_ids'] for item in instructions]
+            input_ids = [item["input_ids"] for item in instructions]
             labels = None
-            attention_mask = [item['attention_mask'] for item in instructions]
+            attention_mask = [item["attention_mask"] for item in instructions]
 
     return { "input_ids":input_ids, "labels":labels, "attention_mask":attention_mask }
 
 @dataclass
-class DataProfile:
+class Profile:
     name: str = None
-    load_from: Literal['hf', 'file'] = 'hf'
+    load_from: Literal["hf", "file"] = "hf"
+    formatting: List[str] = None
     path: str = None
     split: Union[str, List[str]] = None
     dataset: Union[DatasetDict, Dataset] = None
     column_names: List[str] = None
 
 @dataclass
-class Sequences(DataProfile):
+class Sequences(Profile):
+    formatting: Literal["sequence", "dialogue", "multi-turn", "custom"] = "sequence"
     contexts: str = None
     instructions: str = None
     responses: str = None
     conversations: List[str] = None,
     roles: List[str] = None
-    dtype: Literal['sequence', 'dialogue', 'multi-turn'] = None
 
-def load_datasets(profile:Union[List[DataProfile], DataProfile], **kwargs) -> Dataset:
-    if profile.load_from == 'hf':
+def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
+    if profile.load_from == "hf":
         dataset = load_dataset(
             profile.path,
             num_proc=kwargs.get("num_proc", None)
             )
-    elif profile.load_from == 'file':
+    elif profile.load_from == "file":
         _, ext = os.path.splitext(profile.path)
         dataset = load_dataset(
-            path=f'{ext.replace(".", "")}' if ext != '.jsonl' else 'json',
+            path=f"{ext.replace(".", "")}" if ext != ".jsonl" else "json",
             data_dir=os.path.dirname(profile.path),
             data_files=profile.path,
             num_proc=kwargs.get("num_proc", None)
@@ -172,7 +126,7 @@ def load_datasets(profile:Union[List[DataProfile], DataProfile], **kwargs) -> Da
     profile.column_names = dataset.column_names
     return dataset
 
-def align_dataset(dataset:Dataset, profile:DataProfile, desc="Dataset Aligning", **kwargs) -> Dataset:
+def align_dataset(dataset:Dataset, profile:Profile, desc="Dataset Aligning", **kwargs) -> Dataset:
     if isinstance(profile, Sequences):
         return dataset.map(
             partial(
@@ -218,7 +172,7 @@ def log_print_example(
         tokenizer: AutoTokenizer,
         name: str,
     ) -> None:
-    example = tokenizer.batch_decode(dataset[0]['input_ids'],add_special_tokens=False,)[0]
+    example = tokenizer.batch_decode(dataset[0]["input_ids"],add_special_tokens=False,)[0]
     logger.info(f"\n{name} Example:\n{example}")
 
 ALIGN_FUNCTIONS: Dict[str, Callable] = {
@@ -226,17 +180,17 @@ ALIGN_FUNCTIONS: Dict[str, Callable] = {
     "dialogue": align_dialogue,
     "multi-turn": align_multi_turn,
 }
-DATASET_PROFILES: Dict[str, DataProfile] = {}
+DATASET_PROFILES: Dict[str, Profile] = {}
 
 def register_sequences(
     name: str,
-    load_from: Literal['hf', 'file'] = None,
+    load_from: Literal["hf", "file"] = None,
     path: str = None,
-    split: str = None,
+    split: str = "train",
+    formatting: Literal["sequence", "dialogue", "multi-turn"] = "sequence",
     contexts: List[str] = None,
     instructions: List[str] = None,
     responses: List[str] = None,
-    dtype: Literal['sequence', 'dialogue', 'multi-turn'] = 'sequence',
     conversations: List[str] = None,
     roles: List[str] = None,
 ) -> None:
@@ -245,51 +199,51 @@ def register_sequences(
         load_from=load_from, 
         path=path, 
         split=split, 
+        formatting=formatting,
         contexts=contexts, 
         instructions=instructions, 
         responses=responses, 
         conversations=conversations, 
         roles=roles, 
-        dtype=dtype
     )
 
 register_sequences(
-    name='Magicoder-Evol-Instruct-110K',
-    load_from='file',
-    path='/data/datasets/Magicoder-Evol-Instruct-110K/data-evol_instruct-decontaminated.jsonl',
-    split='train',
+    name="Magicoder-Evol-Instruct-110K",
+    load_from="file",
+    path="/data/datasets/Magicoder-Evol-Instruct-110K/data-evol_instruct-decontaminated.jsonl",
+    split="train",
+    formatting="dialogue",
     contexts=[],
-    instructions=['instruction'],
-    responses=['response'],
-    dtype='dialogue',
+    instructions=["instruction"],
+    responses=["response"],
     conversations=None,
     roles=None,
 )
 
 register_sequences(
-    name='ultrachat_200k',
-    load_from='hf',
-    path='/data/datasets/ultrachat_200k',
-    split=['train_sft', 'test_sft', 'train_gen', 'test_gen'],
+    name="ultrachat_200k",
+    load_from="hf",
+    path="/data/datasets/ultrachat_200k",
+    split=["train_sft", "test_sft", "train_gen", "test_gen"],
+    formatting="multi-turn",
     contexts=[],
-    instructions=['messages'],
-    responses=['messages'],
-    dtype='multi-turn',
-    conversations=['content', 'role'],
-    roles=['user', 'assistant'],
+    instructions=["messages"],
+    responses=["messages"],
+    conversations=["content", "role"],
+    roles=["user", "assistant"],
 )
 
 register_sequences(
     name="ShareGPT_Vicuna_unfiltered",
-    load_from='file',
+    load_from="file",
     path="/data/lhz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
-    split='train',
+    split="train",
+    formatting="multi-turn",
     contexts=[],
-    instructions=['conversations'],
-    responses=['conversations'],
-    dtype='multi-turn',
-    conversations=['value', 'from'],
-    roles=['human', 'gpt']
+    instructions=["conversations"],
+    responses=["conversations"],
+    conversations=["value", "from"],
+    roles=["human", "gpt"]
 )
 
 def get_dataset_kwargs(train_args: TrainArguments, **kwargs) -> Dict[str, Any]:
@@ -400,14 +354,14 @@ def get_dataset(
 
         if train_args.val_ratio > 0:
             datasets = train_datasets.train_test_split(train_args.val_ratio, shuffle=train_args.shuffle)
-            train_datasets = datasets['train']
-            eval_datasets = datasets['test']
+            train_datasets = datasets["train"]
+            eval_datasets = datasets["test"]
 
         train_datasets.set_format("torch")
         if eval_datasets is not None:
             eval_datasets.set_format("torch")
 
     return {
-        'train_dataset': train_datasets,
-        'eval_dataset': eval_datasets
+        "train_dataset": train_datasets,
+        "eval_dataset": eval_datasets
     }

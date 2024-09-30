@@ -1,7 +1,7 @@
 import os
 import re
 import shutil
-from typing import Union, Tuple, List, Any
+from typing import Union, List, Any
 from pathlib import Path
 
 import torch.nn as nn
@@ -33,7 +33,6 @@ def rotate_checkpoints(save_total_limit:int = None, output_dir:str = None, check
     
     ckpts_removed = ckpt_sorted[:max(0, len(ckpt_sorted) - save_total_limit)]
     for ckpt in ckpts_removed:
-        # logger.info(f"Deleting older checkpoint [{ckpt.split('/')[-1]}] due to save_total_limit:{save_total_limit}", extra={"prefix":"\n\r"})
         logger.info(f"Deleting older checkpoint [{ckpt.split('/')[-1]}] due to save_total_limit:{save_total_limit}")
         shutil.rmtree(ckpt, ignore_errors=True)
 

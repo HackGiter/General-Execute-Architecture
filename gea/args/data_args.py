@@ -9,7 +9,13 @@ class DataArguments:
     dataset: str = field(
         default=None,
         metadata={
-            "help": "name(s)of training datasets"
+            "help": "name(s) of training datasets"
+        }
+    )
+    dataset_dir: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "directory of training datasets"
         }
     )
     max_length: Optional[int] = field(
