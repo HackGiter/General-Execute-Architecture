@@ -1,17 +1,18 @@
 import os
 from functools import partial
-from dataclasses import dataclass
-from typing import Literal, Callable, Union, Dict, List, Any
+from typing import Callable, Union, Dict, List, Any
 
 import torch
 from transformers import AutoTokenizer
-from datasets import load_dataset, Dataset, DatasetDict, concatenate_datasets
+from datasets import load_dataset, Dataset, concatenate_datasets
 
 from ..args import TrainArguments, EvalArguments, DataArguments, ModelArguments
 from ..utils.logging import get_logger
 from ..model.template import Template, MODEL_TEMPLATES
 
-from .align import align_sequence, align_dialogue, align_multi_turn
+from .dataclass import Profile, Sequences
+from .align import ALIGN_FUNCTIONS
+from .sequence import SEQUENCE_PROFILES
 
 logger = get_logger(__name__)
 
@@ -86,25 +87,6 @@ def get_prompts(
 
     return { "input_ids":input_ids, "labels":labels, "attention_mask":attention_mask }
 
-@dataclass
-class Profile:
-    name: str = None
-    load_from: Literal["hf", "file"] = "hf"
-    formatting: List[str] = None
-    path: str = None
-    split: Union[str, List[str]] = None
-    dataset: Union[DatasetDict, Dataset] = None
-    column_names: List[str] = None
-
-@dataclass
-class Sequences(Profile):
-    formatting: Literal["sequence", "dialogue", "multi-turn", "custom"] = "sequence"
-    contexts: str = None
-    instructions: str = None
-    responses: str = None
-    conversations: List[str] = None,
-    roles: List[str] = None
-
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     if profile.load_from == "hf":
         dataset = load_dataset(
@@ -175,76 +157,9 @@ def log_print_example(
     example = tokenizer.batch_decode(dataset[0]["input_ids"],add_special_tokens=False,)[0]
     logger.info(f"\n{name} Example:\n{example}")
 
-ALIGN_FUNCTIONS: Dict[str, Callable] = {
-    "sequence": align_sequence,
-    "dialogue": align_dialogue,
-    "multi-turn": align_multi_turn,
+DATASET_PROFILES: Dict[str, Dict[str, Profile]] = {
+    "sequence": SEQUENCE_PROFILES
 }
-DATASET_PROFILES: Dict[str, Profile] = {}
-
-def register_sequences(
-    name: str,
-    load_from: Literal["hf", "file"] = None,
-    path: str = None,
-    split: str = "train",
-    formatting: Literal["sequence", "dialogue", "multi-turn"] = "sequence",
-    contexts: List[str] = None,
-    instructions: List[str] = None,
-    responses: List[str] = None,
-    conversations: List[str] = None,
-    roles: List[str] = None,
-) -> None:
-    DATASET_PROFILES[name] = Sequences(
-        name=name, 
-        load_from=load_from, 
-        path=path, 
-        split=split, 
-        formatting=formatting,
-        contexts=contexts, 
-        instructions=instructions, 
-        responses=responses, 
-        conversations=conversations, 
-        roles=roles, 
-    )
-
-register_sequences(
-    name="Magicoder-Evol-Instruct-110K",
-    load_from="file",
-    path="/data/datasets/Magicoder-Evol-Instruct-110K/data-evol_instruct-decontaminated.jsonl",
-    split="train",
-    formatting="dialogue",
-    contexts=[],
-    instructions=["instruction"],
-    responses=["response"],
-    conversations=None,
-    roles=None,
-)
-
-register_sequences(
-    name="ultrachat_200k",
-    load_from="hf",
-    path="/data/datasets/ultrachat_200k",
-    split=["train_sft", "test_sft", "train_gen", "test_gen"],
-    formatting="multi-turn",
-    contexts=[],
-    instructions=["messages"],
-    responses=["messages"],
-    conversations=["content", "role"],
-    roles=["user", "assistant"],
-)
-
-register_sequences(
-    name="ShareGPT_Vicuna_unfiltered",
-    load_from="file",
-    path="/data/lhz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
-    split="train",
-    formatting="multi-turn",
-    contexts=[],
-    instructions=["conversations"],
-    responses=["conversations"],
-    conversations=["value", "from"],
-    roles=["human", "gpt"]
-)
 
 def get_dataset_kwargs(train_args: TrainArguments, **kwargs) -> Dict[str, Any]:
     return {

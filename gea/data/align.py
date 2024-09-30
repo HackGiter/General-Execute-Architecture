@@ -1,8 +1,4 @@
-from typing import Dict, List, Any
-
-from ..utils.logging import logging
-
-logger = logging.getLogger(__name__)
+from typing import Callable, Dict, List, Any
 
 def align_sequence(examples: Dict[str, Any], contexts: str) -> Dict[str, str]:
     return { "contexts": examples[contexts] }
@@ -52,3 +48,9 @@ def align_multi_turn(examples: Dict[str, Any],
         for resp in responses:
             _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
     return { "contexts":_contexts, "instructions":_instructions, "responses":_responses }
+
+ALIGN_FUNCTIONS: Dict[str, Callable] = {
+    "sequence": align_sequence,
+    "dialogue": align_dialogue,
+    "multi-turn": align_multi_turn,
+}
