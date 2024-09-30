@@ -1,6 +1,6 @@
 from typing import Callable, Dict, List, Any
 
-def align_sequence(examples: Dict[str, Any], contexts: str) -> Dict[str, str]:
+def align_text(examples: Dict[str, Any], contexts: str) -> Dict[str, str]:
     return { "contexts": examples[contexts] }
 
 def align_dialogue(examples: Dict[str, Any], 
@@ -49,8 +49,11 @@ def align_multi_turn(examples: Dict[str, Any],
             _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
     return { "contexts":_contexts, "instructions":_instructions, "responses":_responses }
 
-ALIGN_FUNCTIONS: Dict[str, Callable] = {
-    "sequence": align_sequence,
-    "dialogue": align_dialogue,
-    "multi-turn": align_multi_turn,
+ALIGN_FUNCTIONS: Dict[str, Dict[str, Callable]] = {
+    "sequence": {
+        "text": align_text,
+        "dialogue": align_dialogue,
+        "multi-turn": align_multi_turn,
+    }
+
 }

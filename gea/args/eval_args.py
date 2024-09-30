@@ -19,8 +19,17 @@ class EvalArguments:
             "help": "name or path of evaluation dataset"
         }
     )
+    eval_dataset_type: str = field(
+        default="sequence",
+        metadata={
+            "help": "type of datasets: sequence, image, etc"
+        }
+    )
 
     def __post_init__(self):
         if self.eval_dataset is not None:
-            self.eval_dataset = [item.strip() for item in self.eval_dataset.replace(" ", "").split(',')]
+            self.eval_dataset = [item.strip() for item in self.eval_dataset.split(",")]
+
+        if self.eval_dataset_type is not None:
+            self.eval_dataset_type = [item.strip() for item in self.eval_dataset_type.split(",")]
     

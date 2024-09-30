@@ -12,6 +12,12 @@ class DataArguments:
             "help": "name(s) of training datasets"
         }
     )
+    dataset_type: str = field(
+        default="sequence",
+        metadata={
+            "help": "type of datasets: sequence, image, etc"
+        }
+    )
     dataset_dir: Optional[str] = field(
         default=None,
         metadata={
@@ -24,8 +30,8 @@ class DataArguments:
             "help": "max length of sequences if task is about natural language modeling"
         }
     )
-    mix_strategy: Literal['mean', 'sample', 'no'] = field(
-        default='no',
+    mix_strategy: Literal["mean", "sample", "no"] = field(
+        default="no",
         metadata={
             "help": "Strategy to mix up datasets"
         }
@@ -39,5 +45,8 @@ class DataArguments:
 
     def __post_init__(self):
         if self.dataset is not None:
-            self.dataset = [item.strip() for item in self.dataset.replace(" ", "").split(',')]
+            self.dataset = [item.strip() for item in self.dataset.split(",")]
+
+        if self.dataset_type is not None:
+            self.dataset_type = [item.strip() for item in self.dataset_type.split(",")]
     

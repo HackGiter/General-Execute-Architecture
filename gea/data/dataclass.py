@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Union, List
+from typing import Literal, Union, Dict, List
 
 from datasets import Dataset, DatasetDict
 
@@ -21,3 +21,8 @@ class Sequences(Profile):
     responses: str = None
     conversations: List[str] = None,
     roles: List[str] = None
+
+PROFILE_CLASSES: Dict[str, Profile] = {
+    "sequence": Sequences,
+    "none": Profile
+}
