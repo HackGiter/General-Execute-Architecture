@@ -4,7 +4,7 @@ from typing import Dict, Any
 from ..args.parser import parse_args
 
 from ..model.template import get_model
-from ..data.profile import get_dataset
+from ..data.process import get_dataset
 from ..train.train import Trainer
 from ..utils.tools import handle_unknown_kwargs
 

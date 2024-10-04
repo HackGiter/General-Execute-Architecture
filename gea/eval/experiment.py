@@ -1,5 +1,5 @@
 from tqdm import tqdm
-from typing import Iterable, Union, Tuple, Dict, List, Any
+from typing import Union, Tuple, Dict, List, Any
 
 import torch
 import numpy as np

@@ -64,7 +64,7 @@ def get_prompts(
               [item["input_ids"] for item in instructions[len(responses):]]))
         , dim=-1)
         labels = torch.cat(
-            [torch.cat((torch.full_like(instr["input_ids"], fill_value=IGNORE_INDEX), label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
+            [torch.cat((torch.full_like(instr["input_ids"], fill_value=template.ignore_index), label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
             ([] if len(instructions) == len(responses) else 
              ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
               [item["input_ids"] for item in instructions[len(responses):]]))
