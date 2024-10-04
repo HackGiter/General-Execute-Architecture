@@ -8,6 +8,8 @@ from ..utils.tools import get_logger, get_model_details
 
 logger = get_logger(__name__)
 
+IGNORE_INDEX=-100
+
 @dataclass
 class Template:
     name: str = None
@@ -16,6 +18,7 @@ class Template:
     bos_token: str = None
     eos_token: str = None
     sys_prompt: str = None
+    ignore_index: int = IGNORE_INDEX
     sys_template: Callable = None
     inst_template: Callable = None
     resp_template: Callable = None
@@ -28,7 +31,7 @@ class Template:
     
     def get_response(self, response:str) -> str:
         return self.resp_template(response, self.bos_token, self.eos_token)
-
+    
 MODEL_TEMPLATES:Dict[str, Template] = {}
 
 def register_template(
@@ -38,6 +41,7 @@ def register_template(
     bos_token: str = None,
     eos_token: str = None,
     sys_prompt: str = None,
+    ignore_index: int = IGNORE_INDEX,
     sys_template: Callable = None,
     inst_template: Callable = None,
     resp_template: Callable = None,
@@ -49,6 +53,7 @@ def register_template(
         bos_token=bos_token,
         eos_token=eos_token,
         sys_prompt=sys_prompt,
+        ignore_index=ignore_index,
         sys_template=sys_template,
         inst_template=inst_template,
         resp_template=resp_template,
@@ -56,6 +61,18 @@ def register_template(
 
 register_template(
     name="llama2",
+    sys_tokens=['<<SYS>>', '<</SYS>>'],
+    inst_tokens=['[INST] ', ' [/INST]'],
+    bos_token='<s>',
+    eos_token='</s>',
+    sys_prompt="You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.",
+    sys_template=lambda sys_prompt, sys_tokens, bos_token, eos_token: f"{sys_tokens[0]}\n{sys_prompt}\n{sys_tokens[1]}\n\n",
+    inst_template=lambda instruction, inst_tokens, sys_prompt, bos_token, eos_token: f"{bos_token}{inst_tokens[0]}{sys_prompt}{instruction}{inst_tokens[1]}",
+    resp_template=lambda response, bos_token, eos_token: f"{response} {eos_token}"
+)
+
+register_template(
+    name="llama3",
     sys_tokens=['<<SYS>>', '<</SYS>>'],
     inst_tokens=['[INST] ', ' [/INST]'],
     bos_token='<s>',
