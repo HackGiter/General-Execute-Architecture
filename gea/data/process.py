@@ -21,77 +21,6 @@ DATASET_PROFILES: Dict[str, Dict[str, Profile]] = {
     "sequence": SEQUENCE_PROFILES
 }
 
-def get_prompts(
-        example: Dict[str, Any],
-        sys_prompt:str, 
-        tokenizer: AutoTokenizer, 
-        max_length:int = None, 
-        template:Template = None,
-        eos_last:bool = True,
-        concatenated:bool = True,
-        **kwargs) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
-    instructions: List[str] = example["instructions"]
-    responses: List[str] = example["responses"]
-    sys_prompt = "" if sys_prompt is None else template.get_sys_prompt(sys_prompt)
-    instructions = [
-        template.get_inst_prompt(item.strip(), sys_prompt) if i == 0 \
-            else template.get_inst_prompt(item.strip(), "")
-            for i, item in enumerate(instructions)
-    ]
-    responses = [
-        item.lstrip() if not eos_last and i == len(responses) - 1 else template.get_response(item.strip())
-        for i, item in enumerate(responses)
-    ]
-    instructions = [
-        tokenizer(
-            item, 
-            return_tensors="pt",
-            add_special_tokens=False
-        ) for item in instructions
-    ]
-    responses = [
-        tokenizer(
-            item,
-            return_tensors="pt",
-            add_special_tokens=False
-        ) for item in responses
-    ]
-    if len(instructions) != 0 and len(responses) != 0:
-        input_ids = torch.cat(
-            [torch.cat((instr["input_ids"], label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-            ([] if len(instructions) == len(responses) else 
-             ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item["input_ids"] for item in instructions[len(responses):]]))
-        , dim=-1)
-        labels = torch.cat(
-            [torch.cat((torch.full_like(instr["input_ids"], fill_value=template.ignore_index), label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-            ([] if len(instructions) == len(responses) else 
-             ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item["input_ids"] for item in instructions[len(responses):]]))
-        , dim=-1)
-        attention_mask = torch.cat(
-            [torch.cat((instr["attention_mask"], label["attention_mask"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-            ([] if len(instructions) == len(responses) else 
-             ([item["attention_mask"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-              [item["attention_mask"] for item in instructions[len(responses):]]))
-        , dim=-1)
-        if max_length is not None:
-            input_ids = input_ids[:, :max_length]
-            labels = labels[:, :max_length]
-            attention_mask = attention_mask[:, :max_length]
-    else:
-        instructions = instructions if len(instructions) != 0 else responses
-        if concatenated:
-            input_ids = torch.cat([item["input_ids"] for item in instructions], dim=-1)
-            labels = input_ids
-            attention_mask = torch.cat([item["attention_mask"] for item in instructions], dim=-1)
-        else:
-            input_ids = [item["input_ids"] for item in instructions]
-            labels = None
-            attention_mask = [item["attention_mask"] for item in instructions]
-
-    return { "input_ids":input_ids, "labels":labels, "attention_mask":attention_mask }
-
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     if profile.load_from == "hf":
         dataset = load_dataset(
@@ -142,11 +71,10 @@ def preprocess_dataset(
         **kwargs) -> Dataset:
     return dataset.map(
         partial(
-            get_prompts,
+            template.get_prompts,
             sys_prompt=sys_prompt,
             tokenizer=tokenizer,
             max_length=max_length,
-            template=template,
             eos_last=eos_last,
         ),
         remove_columns=dataset.column_names,
