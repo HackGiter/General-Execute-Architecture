@@ -45,7 +45,7 @@ class Template:
         responses: List[str] = example["responses"]
         sys_prompt = "" if sys_prompt is None else self.get_sys_prompt(sys_prompt)
         instructions = [
-            self.bos_token + self.get_inst_prompt(item.strip(), sys_prompt) 
+            (self.bos_token + self.get_inst_prompt(item.strip(), sys_prompt)) 
             if i == 0 else self.get_inst_prompt(item.strip(), "")
             for i, item in enumerate(instructions)
         ]
@@ -101,7 +101,11 @@ class Template:
                 labels = None
                 attention_mask = [item["attention_mask"] for item in instructions]
 
-        return { "input_ids":input_ids, "labels":labels, "attention_mask":attention_mask }
+        return { 
+            "input_ids":input_ids, 
+            "labels":labels, 
+            "attention_mask":attention_mask 
+            }
             
 def get_llama2_prompts(
         self, 
@@ -210,9 +214,14 @@ register_template(
     bos_token="<s>",
     eos_token="</s>",
     sys_prompt="You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.",
-    sys_template=lambda sys_prompt, sys_tokens, bos_token, eos_token: f"{sys_tokens[0]}\n{sys_prompt}\n{sys_tokens[1]}\n\n",
-    inst_template=lambda instruction, inst_tokens, sys_prompt, bos_token, eos_token: f"{bos_token}{inst_tokens[0]}{sys_prompt}{instruction}{inst_tokens[1]}",
-    resp_template=lambda response, inst_tokens, bos_token, eos_token: f"{response} {eos_token}",
+    sys_template=lambda sys_prompt, sys_tokens, bos_token, eos_token: 
+    f"{sys_tokens[0]}\n{sys_prompt}\n{sys_tokens[1]}\n\n",
+    
+    inst_template=lambda instruction, inst_tokens, sys_prompt, bos_token, eos_token: 
+    f"{bos_token}{inst_tokens[0]}{sys_prompt}{instruction}{inst_tokens[1]}",
+    
+    resp_template=lambda response, inst_tokens, bos_token, eos_token: 
+    f"{response} {eos_token}",
     get_prompts=get_llama2_prompts
 )
 

@@ -1,9 +1,18 @@
 from dataclasses import dataclass
-from typing import Literal, Dict, List
+from typing import Literal, Dict, List, Any
 
 from .dataclass import Sequences
 
 SEQUENCE_PROFILES: Dict[str, Sequences] = {}
+
+def get_sequences_from_config(
+    name: str,
+    config: Dict[str, Any]
+) -> Sequences:
+    register_sequences(
+        name=str,
+        **config
+    )
 
 def register_sequences(
     name: str,

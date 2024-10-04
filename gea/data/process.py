@@ -1,7 +1,7 @@
 import os
 import json
 from functools import partial
-from typing import Callable, Union, Dict, List, Any
+from typing import Callable, Literal, Union, Dict, List, Any
 
 import torch
 from transformers import AutoTokenizer
@@ -13,12 +13,16 @@ from ..model.template import Template, MODEL_TEMPLATES
 
 from .dataclass import Profile, Sequences, PROFILE_CLASSES
 from .align import ALIGN_FUNCTIONS
-from .sequence import SEQUENCE_PROFILES
+from .sequence import SEQUENCE_PROFILES, get_sequences_from_config
 
 logger = get_logger(__name__)
 
-DATASET_PROFILES: Dict[str, Dict[str, Profile]] = {
+PROFILES4DATASET: Dict[str, Dict[str, Profile]] = {
     "sequence": SEQUENCE_PROFILES
+}
+
+CONFIG4PROFILES: Dict[str, Callable] = {
+    "sequence": get_sequences_from_config
 }
 
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
@@ -114,14 +118,14 @@ def get_dataset(
 
     template = MODEL_TEMPLATES[model_args.model] if model_args.model in MODEL_TEMPLATES else None
     train_dataset_profiles = [
-        DATASET_PROFILES[it1].get(
+        PROFILES4DATASET[it1].get(
             it2, 
-            PROFILE_CLASSES[it1](**dataset_configs[it2])
+            CONFIG4PROFILES[it1](it2, dataset_configs[it2])
         ) for it1, it2 in zip(data_args.dataset_type, data_args.dataset)]
     eval_dataset_profiles = [
-        DATASET_PROFILES[it1].get(
+        PROFILES4DATASET[it1].get(
             it2, 
-            PROFILE_CLASSES[it1](**dataset_configs[it2])
+            CONFIG4PROFILES[it1](it2, dataset_configs[it2])
         ) for it1, it2 in zip(eval_args.eval_dataset_type, eval_args.eval_dataset)] if eval_args.eval_dataset is not None else None
 
     dataset_kwargs = get_dataset_kwargs(train_args, **kwargs)

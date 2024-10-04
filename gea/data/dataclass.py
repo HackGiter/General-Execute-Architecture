@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Union, Dict, List
+from typing import Literal, Union, Dict, List, Any
 
 from datasets import Dataset, DatasetDict
 
