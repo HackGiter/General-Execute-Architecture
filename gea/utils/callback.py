@@ -1,7 +1,8 @@
 import json
 import copy
-from enum import Enum
+import time
 import dataclasses
+from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Literal, Union, Dict, List, Any
 from tqdm.auto import tqdm
@@ -69,7 +70,7 @@ class GeneralState:
 class TrainState(GeneralState):
     epochs: Union[float, int] = None
     global_epoch: int = 0
-    num_examples: int = 0
+    num_samples: int = 0
     max_steps: int = 0
     eval_steps: int = 0
     save_steps: int = 0
@@ -98,11 +99,14 @@ class TrainState(GeneralState):
     should_save: bool = False
     should_stop: bool = False
 
+    start_time: float = None
+    end_time: float = None
+
     @property
     def hparams(self) -> Dict[str, Any]:
         return {
             "epochs": self.epochs,
-            "num_examples": self.num_examples,
+            "num_samples": self.num_samples,
             "max_steps": self.max_steps,
             "batch_size": self.train_batch_size,
             "optim": self.optim,
@@ -111,6 +115,15 @@ class TrainState(GeneralState):
             "warmup_steps": self.warmup_steps,
             "weight_decay": self.weight_decay,
             "max_grad_norm": self.max_grad_norm,
+        }
+    
+    def get_train_metric(self, prefix:str = None):
+        prefix = "" if prefix is None else prefix + "_"
+        runtime = self.end_time - self.start_time
+        return {
+            f"{prefix}runtime": round(runtime, 4),
+            f"{prefix}samples_per_second": round(self.num_samples / runtime, 3),
+            f"{prefix}steps per_second": round(self.max_steps / runtime, 3)
         }
 
 class StateCallback:
@@ -281,6 +294,7 @@ class TrainStateCallback(StateCallback):
 
     def on_train_begin(self, state:TrainState, **kwargs):
         if state.is_world_process_zero:
+            state.start_time = time.time()
             self.training_bar = tqdm(total=state.max_steps, dynamic_ncols=True)
         state.wrapped = True
         self.current_step = 0
@@ -357,3 +371,4 @@ class TrainStateCallback(StateCallback):
         if state.is_world_process_zero:
             self.training_bar.close()
             self.training_bar = None
+            state.end_time = time.time()

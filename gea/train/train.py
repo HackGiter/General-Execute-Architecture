@@ -10,7 +10,7 @@ import torch
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cuda.allow_tf32 = True
 from torch.optim import Optimizer
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from datasets import Dataset, IterableDataset, DatasetDict
 from transformers import (
@@ -27,7 +27,7 @@ from ..utils.integration import TensorBoardCallback
 from ..utils.tools import rotate_checkpoints
 from ..utils.logging import get_logger
 
-from transformers.trainer_pt_utils import get_model_param_count, remove_dummy_checkpoint
+from transformers.trainer_pt_utils import metrics_format, get_model_param_count, remove_dummy_checkpoint
 
 logger = get_logger(__name__)
 
@@ -112,7 +112,7 @@ class Trainer:
 
         self.train_dataloader = None
         self.eval_dataloaders = None
-        self.train_sampler = kwargs.pop("train_sampler", None)
+        self.train_sampler = kwargs.pop("train_sampler", RandomSampler(self.train_dataset) if self.train_args.shuffle else None)
         self.eval_sampler = kwargs.pop("eval_sampler", None)
         self.optimizer = kwargs.pop("optimizer", None)
         self.lr_scheduler = kwargs.pop("lr_scheduler", None)
@@ -137,7 +137,7 @@ class Trainer:
             self.state.save_steps = steps_per_epoch
         elif self.train_args.save_strategy == StateStrategy.NO:
             self.state.save_steps = -1
-        self.state.num_examples = self.state.max_steps * self.state.train_batch_size * self.train_args.gradient_accumulation_steps
+        self.state.num_samples = self.state.max_steps * self.state.train_batch_size * self.train_args.gradient_accumulation_steps
 
     def get_train_dataloader(self) -> None:
         if self.train_dataloader is None:
@@ -148,7 +148,7 @@ class Trainer:
                 "prefetch_factor": self.train_args.dataloader_prefetch_factor,
                 "pin_memory": self.train_args.dataloader_pin_memory,
                 "sampler": self.train_sampler,
-                "shuffle": self.train_args.shuffle,
+                "shuffle": self.train_args.shuffle if self.train_sampler is None else None,
                 "drop_last": self.train_args.dataloader_drop_last,
             }
             self.train_dataloader = DataLoader(self.train_dataset, **dataloader_params)
@@ -264,7 +264,7 @@ class Trainer:
         self.have_accelerator_prepared()
 
         logger.info(" ***** Running training *****  ")
-        logger.info(f" Num examples = {self.state.num_examples:,}")
+        logger.info(f" Num examples = {self.state.num_samples:,}")
         logger.info(f" Num Epochs = {self.state.epochs:,}")
         logger.info(f" Instantaneous batch size per device = {self.train_args.per_device_train_batch_size:,}")
         if self.train_args.per_device_train_batch_size != self.state.train_batch_size:
@@ -297,6 +297,13 @@ class Trainer:
 
         self.accelerator.end_training()
         self.callback_handler.on_train_end(state=self.state)
+
+        train_metrics = metrics_format(self, self.state.get_train_metric(self, "train"))
+        k_width = max(len(str(x)) for x in train_metrics.keys())
+        v_width = max(len(str(x)) for x in train_metrics.values())
+        logger.info("***** train metrics *****", extra={"prefix":"\n\r"})
+        for key in sorted(train_metrics.keys()):
+            logger.info(f"  {key: <{k_width}} = {train_metrics[key]:>{v_width}}", extra={"prefix":"\n\r"})
 
     @contextmanager
     def execute_train_contexts(self, *models):
