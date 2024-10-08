@@ -488,7 +488,8 @@ class Trainer:
                 if self.accelerator.is_main_process and self.tokenizer is not None:
                     self.tokenizer.save_pretrained(self.train_args.project)
 
-            rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
+            if self.state.is_world_process_zero:
+                rotate_checkpoints(self.train_args.save_total_limit, self.train_args.project)
             
             self.callback_handler.on_save(state=self.state, **kwargs)
 

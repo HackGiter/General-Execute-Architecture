@@ -11,7 +11,7 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
-def sorted_checkpoints(output_dir:str = None, checkpoint_prefix="checkpoint", regex_pattern:str=".*checkpoint-\d+-([0-9]+)") -> List[str]:
+def sorted_checkpoints(output_dir:str = None, checkpoint_prefix="checkpoint", regex_pattern:str=r".*checkpoint-\d+-([0-9]+)") -> List[str]:
     ckpt_sorted = []
 
     global_checkpoints = [str(x) for x in Path(output_dir).glob(f"{checkpoint_prefix}-*") if os.path.isdir(x)]
