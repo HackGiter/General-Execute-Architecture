@@ -2,7 +2,7 @@ import os
 import math
 import random
 from contextlib import contextmanager
-from typing import Callable, Mapping, Union, Tuple, Dict, List, Any, get_origin, get_args
+from typing import Callable, Mapping, Union, Tuple, Dict, Any, get_origin
 
 import numpy as np
 
@@ -18,7 +18,7 @@ from transformers import (
     AutoTokenizer,
     get_scheduler,
 )
-from accelerate import Accelerator, skip_first_batches
+from accelerate import Accelerator, DataLoaderConfiguration, skip_first_batches
 from accelerate.utils import LoggerType, DistributedType
 
 from  ..args import TrainArguments
@@ -27,7 +27,6 @@ from ..utils.integration import TensorBoardCallback
 from ..utils.tools import rotate_checkpoints
 from ..utils.logging import get_logger
 
-from transformers.trainer_utils import enable_full_determinism
 from transformers.trainer_pt_utils import get_model_param_count, remove_dummy_checkpoint
 
 logger = get_logger(__name__)
@@ -51,25 +50,22 @@ class Trainer:
             eval_dataset: Union[Dataset, DatasetDict] = None,
             **kwargs,
             ) -> None:
-        enable_full_determinism(train_args.seed)
         self.train_args = train_args
+        self.model = model
+        self.tokenizer = tokenizer
+        self.train_dataset = train_dataset
+        self.eval_datasets = eval_dataset
 
         self.accelerator = Accelerator(
-            mixed_precision=self.train_args.mixed_precision,
-            gradient_accumulation_steps=self.train_args.gradient_accumulation_steps,
             log_with=LoggerType.TENSORBOARD if self.train_args.tensorboard_project is not None else LoggerType.WANDB,
             project_dir=self.train_args.project,
+            **self.prepare_accelerator_kwargs()
         )
         if self.train_args.tensorboard_project is not None:
             if self.accelerator.is_main_process:
                 logger.info("Tensoboard tracker initialize")
             self.accelerator.init_trackers(project_name=self.train_args.tensorboard_project)
         self.accelerator.free_memory()
-
-        self.model = model
-        self.tokenizer = tokenizer
-        self.train_dataset = train_dataset
-        self.eval_datasets = eval_dataset
 
         callbacks = ([TensorBoardCallback] if train_args.tensorboard_project is not None else []) + [TrainStateCallback]
         callbacks += kwargs.pop("callbacks", [])
@@ -97,6 +93,18 @@ class Trainer:
         self.callback_handler.on_init(state=self.state)
 
         self.prepare_train_kwargs(kwargs)
+
+    def prepare_accelerator_kwargs(self) -> Dict[str, Any]:
+        dataloader_config = DataLoaderConfiguration(
+            dispatch_batches=isinstance(self.train_dataset, IterableDataset),
+            use_seedable_sampler=self.train_args.use_seedable_sampler,
+            non_blocking=self.train_args.dataloader_pin_memory
+        )
+        return {
+            "dataloader_config": dataloader_config,
+            "mixed_precision": self.train_args.mixed_precision,
+            "gradient_accumulation_steps": self.train_args.gradient_accumulation_steps,
+        }
 
     def prepare_train_kwargs(self, kwargs:Dict[str, Any]) -> None:
         self.train_data_collator = kwargs.pop("train_collate_fn", None)
@@ -301,18 +309,17 @@ class Trainer:
                 yield
 
     def execute_train_process(self, **kwargs):
-        resume_step = self.resume_from_checkpoint()
 
+        resume_step_in_current_epoch = self.resume_from_checkpoint()
         compute_loss:Callable = kwargs.pop("compute_loss", self.kwargs.get("compute_loss", self.compute_loss))
         for epoch in range(self.state.global_epoch, self.state.epochs):
             self.callback_handler.on_epoch_begin(state=self.state, **kwargs)
 
             epoch_iterator = self.train_dataloader
-            if hasattr(epoch_iterator, "dataset") and isinstance(epoch_iterator.dataset, IterableDataset):
+            if hasattr(epoch_iterator, "dataset"):
                 epoch_iterator.set_epoch(epoch)
-            if resume_step > 0:
-                epoch_iterator = skip_first_batches(epoch_iterator, resume_step)
-                resume_step = 0
+            epoch_iterator = skip_first_batches(epoch_iterator, resume_step_in_current_epoch) if resume_step_in_current_epoch > 0 else epoch_iterator
+            resume_step_in_current_epoch = 0
 
             for _, batch in enumerate(epoch_iterator):
                 self.callback_handler.on_step_begin(state=self.state, sync_on=self.accelerator.sync_gradients, **kwargs)

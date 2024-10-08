@@ -1,6 +1,9 @@
 # ignore check.ipynb
 check.ipynb
 create_renum_dataset.py
+check_rng_state.py
+load_ckpt_state.py
+save_ckpt_state.py
 
 # ignore any log files
 log/

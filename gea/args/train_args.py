@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Union
 from contextlib import contextmanager
 
-from transformers import set_seed
+from transformers import enable_full_determinism, set_seed
 from transformers.trainer_utils import SchedulerType
 from accelerate import PartialState
 
@@ -31,6 +31,26 @@ class TrainArguments:
         default=1234,
         metadata={
             "help": "seed for initialization and reproducible experiments"
+        }
+    )
+    full_determinism: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to call enable_full_determinism instead of set_seed for reproducibility in distributed"
+                " training. Important: this will negatively impact the performance, so only use it for debugging."
+            )
+        }
+    )
+    use_seedable_sampler: Optional[bool] = field(
+        default=True,
+        metadata={
+            "help": (
+                "Whether or not use a fully seedable random sampler ([`accelerate.data_loader.SeedableRandomSampler`]). Ensures "
+                "training results are fully reproducable using a different sampling technique. While seed-to-seed results "
+                "may differ, on average the differences are neglible when using multiple different seeds to compare. Should "
+                "also be ran with [`~utils.set_seed`] for the best results."
+            )
         }
     )
     epochs: Optional[float] = field(
@@ -239,7 +259,7 @@ class TrainArguments:
     )
 
     def __post_init__(self):
-        set_seed(self.seed)
+        enable_full_determinism(self.seed) if self.full_determinism else set_seed(self.seed)
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             accelerator_state_kwargs = {}
             accelerator_state_kwargs["backend"] = self.ddp_backend
@@ -247,8 +267,8 @@ class TrainArguments:
             if self.deepspeed:
                 os.environ["ACCELERATE_USE_DEEPSPEED"] = "true"
             self.distributed_state = PartialState(**accelerator_state_kwargs)
-            if self.deepspeed:
-                del os.environ["ACCELERATE_USE_DEEPSPEED"]
+            # if self.deepspeed:
+            #     del os.environ["ACCELERATE_USE_DEEPSPEED"]
         else:
             self.distributed_state = None
 
