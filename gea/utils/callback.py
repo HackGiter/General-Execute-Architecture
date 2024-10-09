@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from typing import Optional, Literal, Union, Dict, List, Any
 from tqdm.auto import tqdm
 
-from transformers.trainer_utils import SchedulerType
+import torch
 from transformers import (
     AutoModel, 
     AutoTokenizer,
 )
+from transformers.trainer_utils import SchedulerType
 
 from .logging import get_logger
 
@@ -75,7 +76,11 @@ class TrainState(GeneralState):
     eval_steps: int = 0
     save_steps: int = 0
     train_batch_size: int = 0
-    total_train_batch_size: int = 0
+    gradient_accumulation_steps: int = 0
+    cur_loss: Union[torch.Tensor, float] = None
+    train_loss: float = 0.0
+    eval_loss: float = 0.0
+    cur_flops: float = 0
     total_flops: float = 0
     best_metric: Optional[float] = None
     best_model_checkpoint: Optional[str] = None
@@ -99,8 +104,8 @@ class TrainState(GeneralState):
     should_save: bool = False
     should_stop: bool = False
 
-    start_time: float = None
-    end_time: float = None
+    start_time: float = 0
+    end_time: float = 0
 
     @property
     def hparams(self) -> Dict[str, Any]:
@@ -123,7 +128,8 @@ class TrainState(GeneralState):
         return {
             f"{prefix}runtime": round(runtime, 4),
             f"{prefix}samples_per_second": round(self.num_samples / runtime, 3),
-            f"{prefix}steps per_second": round(self.max_steps / runtime, 3)
+            f"{prefix}steps_per_second": round(self.max_steps / runtime, 3),
+            f"{prefix}total_flos": self.total_flops
         }
 
 class StateCallback:
@@ -316,11 +322,13 @@ class TrainStateCallback(StateCallback):
         state.should_eval = False
         state.should_save = False
     
-    def on_step_end(self, state:TrainState, sync_on:bool, **kwargs):
+    def on_step_end(self, state:TrainState, loss:Union[torch.Tensor, float], flops:float, sync_on:bool, **kwargs):
         state.global_step += sync_on
+        state.cur_flops += flops
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
+            state.loss = (state.loss if isinstance(state.loss, loss) else state.loss.item()) + loss
             self.current_step = state.global_step
         if (
             self.current_step == 1
@@ -347,13 +355,19 @@ class TrainStateCallback(StateCallback):
 
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
         state.should_log = False
+        if "train_loss" in logs:
+            state.cur_loss -= state.cur_loss
+            state.loss = logs["train_loss"]
+        if "train_flops" in logs:
+            state.cur_flops = 0
+            state.total_flops += logs["train_flops"]
+        if "eval_loss" in logs:
+            state.eval_loss = logs["eval_loss"]
         state.log_history.append({**logs, **{"step": state.global_step}})
         if state.is_world_process_zero and self.training_bar is not None:
             logs = copy.deepcopy(logs)
             if "epoch" in logs:
                 logs["epoch"] = round(logs["epoch"], 2)
-            elif "eval_epoch" in logs:
-                logs["eval_epoch"] = round(logs["eval_epoch"], 2)
             self.training_bar.write(str(logs))
             
     def on_save(self, state:TrainState, **kwagrs):

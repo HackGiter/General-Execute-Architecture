@@ -77,7 +77,7 @@ class Trainer:
             save_steps=self.train_args.save_steps,
             eval_steps=self.train_args.eval_steps,
             train_batch_size=self.train_args.per_device_train_batch_size * self.accelerator.num_processes,
-            total_train_batch_size=self.train_args.per_device_train_batch_size * self.accelerator.num_processes * self.train_args.gradient_accumulation_steps,
+            gradient_accumulation_steps=self.train_args.gradient_accumulation_steps,
             is_local_process_zero=self.accelerator.is_local_main_process,
             is_world_process_zero=self.accelerator.is_main_process,
             optim=self.train_args.optim,
@@ -123,6 +123,7 @@ class Trainer:
         if self.train_dataloader is None:
             self.get_train_dataloader()
         steps_per_epoch = (len(self.train_dataloader) // self.train_args.gradient_accumulation_steps) // self.accelerator.num_processes
+        self.state.cur_loss = torch.tensor(0.0).to(self.accelerator.device)
         if self.state.max_steps <= 0:
             self.state.max_steps = math.ceil(steps_per_epoch * self.train_args.epochs)
         if self.train_args.warmup_ratio > 0 and self.state.warmup_steps == 0:
@@ -246,7 +247,7 @@ class Trainer:
                 **kwargs,
             )
 
-    def have_accelerator_prepared(self)->None:
+    def prepare_for_training(self) -> None:
         if self.eval_dataloaders is not None:
             self.model, self.optimizer, self.lr_scheduler, self.train_dataloader, self.eval_dataloaders = self.accelerator.prepare(self.model, self.optimizer, self.lr_scheduler, self.train_dataloader, self.eval_dataloaders)
         else:
@@ -260,8 +261,7 @@ class Trainer:
         self.prepare_model(**kwargs)
         self.prepare_optimizer(**kwargs)
         self.prepare_lr_scheduler(**kwargs)
-
-        self.have_accelerator_prepared()
+        self.prepare_for_training()
 
         logger.info(" ***** Running training *****  ")
         logger.info(f" Num examples = {self.state.num_samples:,}")
@@ -269,7 +269,7 @@ class Trainer:
         logger.info(f" Instantaneous batch size per device = {self.train_args.per_device_train_batch_size:,}")
         if self.train_args.per_device_train_batch_size != self.state.train_batch_size:
             logger.info(f" Training with DataParallel so batch size has been adjusted to: {self.state.train_batch_size:,}")
-        logger.info(f" Total train batch size (w. parallel, distributed & accumulation) = {self.state.total_train_batch_size:,}")
+        logger.info(f" Total train batch size (w. parallel, distributed & accumulation) = {self.state.train_batch_size * self.state.gradient_accumulation_steps:,}")
         logger.info(f" Gradient Accumulation steps = {self.train_args.gradient_accumulation_steps}")
         logger.info(f" Total optimization steps = {self.state.max_steps:,}")
         logger.info(f" Number of trainable parameters = {get_model_param_count(self.model, trainable_only=True):,}")
@@ -298,12 +298,12 @@ class Trainer:
         self.accelerator.end_training()
         self.callback_handler.on_train_end(state=self.state)
 
-        train_metrics = metrics_format(self, self.state.get_train_metric(self, "train"))
+        train_metrics = metrics_format(self, self.state.get_train_metric("train"))
         k_width = max(len(str(x)) for x in train_metrics.keys())
         v_width = max(len(str(x)) for x in train_metrics.values())
-        logger.info("***** train metrics *****", extra={"prefix":"\n\r"})
+        logger.info("\n***** train metrics *****")
         for key in sorted(train_metrics.keys()):
-            logger.info(f"  {key: <{k_width}} = {train_metrics[key]:>{v_width}}", extra={"prefix":"\n\r"})
+            logger.info(f"\r  {key: <{k_width}} = {train_metrics[key]:>{v_width}}")
 
     @contextmanager
     def execute_train_contexts(self, *models):
@@ -319,6 +319,7 @@ class Trainer:
 
         resume_step_in_current_epoch = self.resume_from_checkpoint()
         compute_loss:Callable = kwargs.pop("compute_loss", self.kwargs.get("compute_loss", self.compute_loss))
+
         for epoch in range(self.state.global_epoch, self.state.epochs):
             self.callback_handler.on_epoch_begin(state=self.state, **kwargs)
 
@@ -333,6 +334,8 @@ class Trainer:
                 
                 with self.execute_train_contexts(self.model):
                     loss, metrics = compute_loss(self.model, batch, state=self.state, **kwargs)
+                    cur_loss += loss
+                    cur_flops += float(self.calculate_floating_point_ops(batch))
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         self.accelerator.unscale_gradients(self.optimizer)
@@ -346,11 +349,16 @@ class Trainer:
                     self.lr_scheduler.step()
                     self.optimizer.zero_grad()
 
-                self.callback_handler.on_step_end(state=self.state, sync_on=self.accelerator.sync_gradients, **kwargs)
+                self.callback_handler.on_step_end(
+                    state=self.state, 
+                    loss=loss, 
+                    flops=float(self.calculate_floating_point_ops(batch)), 
+                    sync_on=self.accelerator.sync_gradients, 
+                    **kwargs)
 
                 if self.accelerator.sync_gradients:
                     self.model.zero_grad()
-                    self.do_log(loss=loss, grad_norm=grad_norm, metrics=metrics, **kwargs)
+                    self.do_log(grad_norm=grad_norm, metrics=metrics, **kwargs)
                     self.do_evaluate(**kwargs)
                     self.do_save(**kwargs)
                 
@@ -459,7 +467,7 @@ class Trainer:
 
     def do_save(self, **kwargs):
         if self.state.should_save:
-            logger.info(f" **** SAVING checkpoint-{self.state.global_epoch}-{self.state.global_step} ****", extra={"prefix":"\n\r"})
+            logger.info(f" **** SAVING checkpoint-{self.state.global_epoch}-{self.state.global_step} in {self.train_args.porject} ****", extra={"prefix":"\n\r"})
             output_dir = os.path.join(
                 self.train_args.project,
                 f"checkpoint-{self.state.global_epoch}-{self.state.global_step}"
@@ -493,20 +501,7 @@ class Trainer:
             
             self.callback_handler.on_save(state=self.state, **kwargs)
 
-    def save_rng_state(self, output_dir:str):
-        rng_states = {
-            "python": random.getstate(),
-            "numpy": np.random.get_state(),
-            "cpu": torch.random.get_rng_state(),
-        }
-        if self.accelerator.num_processes <= 1:
-            rng_states["cuda"] = torch.cuda.random.get_rng_state()
-            torch.save(rng_states, os.path.join(output_dir, "rng_state.pth"))
-        else:
-            rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
-            torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.accelerator.process_index}.pth"))
-
-    def do_log(self, loss, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
+    def do_log(self, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
         if self.state.should_log:
             if metrics is not None:
                 _metrics = self.accelerator.gather_for_metrics(metrics)
@@ -517,14 +512,14 @@ class Trainer:
                 _metrics = {}
 
             metrics = {}
-            if isinstance(loss, torch.Tensor):
-                loss = loss.detach()
+            if isinstance(self.state.loss, torch.Tensor):
+                loss = self.state.loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
             else:
-                loss = np.mean(self.accelerator.gather_for_metrics([loss]))
-
-            metrics["epoch"] = (self.state.global_step / self.state.max_steps) * self.state.epochs
+                loss = np.mean(self.accelerator.gather_for_metrics([self.state.loss]))
             metrics["loss"] = round(loss, 4)
+            metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([self.state.flops]))
+
             if grad_norm is not None:
                 metrics["grad_norm"] = round(grad_norm.detach().item(), 5) if isinstance(grad_norm, torch.Tensor) else round(grad_norm, 5)
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
@@ -535,6 +530,7 @@ class Trainer:
                 for k, v in metrics.items():
                     _metrics[f"{prefix}_{k}"] = v
                 metrics = _metrics
+            metrics["epoch"] = (self.state.global_step / self.state.max_steps) * self.state.epochs
             self.callback_handler.on_log(state=self.state, logs=metrics, **kwargs)
 
     def resume_from_checkpoint(self) -> int:
@@ -552,3 +548,33 @@ class Trainer:
 
             return self.state.global_step * self.train_args.gradient_accumulation_steps - self.state.global_epoch * len(self.train_dataloader)
         return 0
+    
+    def save_rng_state(self, output_dir:str):
+        rng_states = {
+            "python": random.getstate(),
+            "numpy": np.random.get_state(),
+            "cpu": torch.random.get_rng_state(),
+        }
+        if self.accelerator.num_processes <= 1:
+            rng_states["cuda"] = torch.cuda.random.get_rng_state()
+            torch.save(rng_states, os.path.join(output_dir, "rng_state.pth"))
+        else:
+            rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
+            torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.accelerator.process_index}.pth"))
+
+    def esitmiate_inputs(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        if not hasattr(self.model, "warnings_issued"):
+            self.model.warnings_issued = {}
+        if self.model.main_input_name in input_dict:
+            return input_dict[self.model.main_input_name].numel()
+        else:
+            numel = 0
+            for _, v in input_dict.items():
+                if isinstance(v, torch.Tensor):
+                    numel += v.shape[0] * v.shape[1]
+        return numel
+
+    def calculate_floating_point_ops(
+        self, input_dict: Dict[str, Union[torch.Tensor, Any]], exclude_embeddings: bool = True
+    ) -> int:
+        return 6 * self.estimate_inputs(input_dict) * self.model.num_parameters(exclude_embeddings)
