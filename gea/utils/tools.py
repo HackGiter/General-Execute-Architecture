@@ -23,7 +23,7 @@ def sorted_checkpoints(output_dir:str = None, checkpoint_prefix="checkpoint", re
     ckpt_sorted = [ckpt[1] for ckpt in sorted(ckpt_sorted)]
     return ckpt_sorted
 
-def rotate_checkpoints(save_total_limit:int = None, output_dir:str = None, checkpoint_prefix="checkpoint", regex_pattern:str=".*checkpoint-\d+-([0-9]+)") -> None:
+def rotate_checkpoints(save_total_limit:int = None, output_dir:str = None, checkpoint_prefix="checkpoint", regex_pattern:str=r".*checkpoint-\d+-([0-9]+)") -> None:
     if save_total_limit is None or save_total_limit <= 0:
         return
     

@@ -52,6 +52,7 @@ class Trainer:
             ) -> None:
         self.train_args = train_args
         self.model = model
+        self.model_ = model
         self.tokenizer = tokenizer
         self.train_dataset = train_dataset
         self.eval_datasets = eval_dataset
@@ -334,8 +335,6 @@ class Trainer:
                 
                 with self.execute_train_contexts(self.model):
                     loss, metrics = compute_loss(self.model, batch, state=self.state, **kwargs)
-                    cur_loss += loss
-                    cur_flops += float(self.calculate_floating_point_ops(batch))
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         self.accelerator.unscale_gradients(self.optimizer)
@@ -411,7 +410,7 @@ class Trainer:
             if isinstance(self.eval_dataloaders, Dict):
                 for key, eval_dataloader in self.eval_dataloaders.items():
                     if exec_eval_fn is None:
-                        self.do_log(**self.execute_eval_process(eval_dataloader, **kwargs))
+                        self.do_log(prefix='eval', **self.execute_eval_process(eval_dataloader, **kwargs))
                     else:
                         exec_eval_params = {
                             "model": self.model,
@@ -420,7 +419,7 @@ class Trainer:
                             "description": key.upper(),
                         }
                         kwargs.update(exec_eval_params)
-                        exec_eval_fn(**kwargs)
+                        self.do_log(prefix='eval', **exec_eval_fn(**kwargs))
             else:
                 if exec_eval_fn is None:
                     self.do_log(prefix='eval', **self.execute_eval_process(self.eval_dataloaders, **kwargs))
@@ -431,7 +430,7 @@ class Trainer:
                         "state": self.state,
                     }
                     kwargs.update(exec_eval_params)
-                    self.do_log(**exec_eval_fn(**kwargs))
+                    self.do_log(prefix='eval', **exec_eval_fn(**kwargs))
             torch.cuda.empty_cache()
 
     @torch.inference_mode()
@@ -467,7 +466,7 @@ class Trainer:
 
     def do_save(self, **kwargs):
         if self.state.should_save:
-            logger.info(f" **** SAVING checkpoint-{self.state.global_epoch}-{self.state.global_step} in {self.train_args.porject} ****", extra={"prefix":"\n\r"})
+            logger.info(f" **** SAVING checkpoint-{self.state.global_epoch}-{self.state.global_step} in {self.train_args.project} ****", extra={"prefix":"\n\r"})
             output_dir = os.path.join(
                 self.train_args.project,
                 f"checkpoint-{self.state.global_epoch}-{self.state.global_step}"
@@ -512,11 +511,14 @@ class Trainer:
                 _metrics = {}
 
             metrics = {}
-            if isinstance(self.state.loss, torch.Tensor):
-                loss = self.state.loss.detach()
-                loss = self.accelerator.gather(loss).mean().item()
+            
+            loss = kwargs.pop("loss", self.state.cur_loss)
+            steps = self.state.logging_steps * self.state.gradient_accumulation_steps if prefix == "train" else 1
+            if isinstance(loss, torch.Tensor):
+                loss = loss.detach()
+                loss = self.accelerator.gather(loss).mean().item() / steps
             else:
-                loss = np.mean(self.accelerator.gather_for_metrics([self.state.loss]))
+                loss = np.mean(self.accelerator.gather_for_metrics([loss])) / steps
             metrics["loss"] = round(loss, 4)
             metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([self.state.flops]))
 
@@ -562,11 +564,11 @@ class Trainer:
             rng_states['cuda'] = torch.cuda.random.get_rng_state_all()
             torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.accelerator.process_index}.pth"))
 
-    def esitmiate_inputs(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
-        if not hasattr(self.model, "warnings_issued"):
-            self.model.warnings_issued = {}
-        if self.model.main_input_name in input_dict:
-            return input_dict[self.model.main_input_name].numel()
+    def estimate_inputs(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        if not hasattr(self.model_, "warnings_issued"):
+            self.model_.warnings_issued = {}
+        if self.model_.main_input_name in input_dict:
+            return input_dict[self.model_.main_input_name].numel()
         else:
             numel = 0
             for _, v in input_dict.items():
