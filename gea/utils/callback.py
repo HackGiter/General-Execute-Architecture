@@ -328,7 +328,7 @@ class TrainStateCallback(StateCallback):
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
-            state.loss = (state.loss if isinstance(state.loss, loss) else state.loss.item()) + loss
+            state.cur_loss = (state.cur_loss if isinstance(state.cur_loss, loss) else state.cur_loss.item()) + loss
             self.current_step = state.global_step
         if (
             self.current_step == 1
