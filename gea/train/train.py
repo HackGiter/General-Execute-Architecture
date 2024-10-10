@@ -533,7 +533,7 @@ class Trainer:
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             
             if flops is not None:
-                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([self.state.flops]))    
+                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([flops]))    
         
             metrics = {**metrics, **_metrics}
             if prefix is not None:
