@@ -588,4 +588,4 @@ class Trainer:
     def calculate_floating_point_ops(
         self, input_dict: Dict[str, Union[torch.Tensor, Any]], exclude_embeddings: bool = True
     ) -> int:
-        return 6 * self.estimate_inputs(input_dict) * self.model.num_parameters(exclude_embeddings)
+        return 6 * self.estimate_inputs(input_dict) * self.model_.num_parameters(exclude_embeddings)
