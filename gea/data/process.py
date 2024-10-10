@@ -25,6 +25,8 @@ CONFIG4PROFILES: Dict[str, Callable] = {
     "sequence": get_sequences_from_config
 }
 
+PROFILES_CONFIG="data_info.json"
+
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     if profile.load_from == "hf":
         dataset = load_dataset(
@@ -110,11 +112,9 @@ def get_dataset(
         eos_last:bool = True,
         **kwargs) -> Dict[str, Dataset]:
     
-    if data_args.dataset_dir is not None:
-        with open(os.path.join(data_args.dataset_dir, "dataset_info.json"), 'r') as f:
-            dataset_configs = json.load(f)
-    else:
-        dataset_configs = None
+    dataset_configs = PROFILES_CONFIG if data_args.dataset_dir is None else os.path.join(data_args.dataset_dir, "dataset_info.json")
+    with open(dataset_configs, 'r') as f:
+        dataset_configs = json.load(f)
 
     template = MODEL_TEMPLATES[model_args.model] if model_args.model in MODEL_TEMPLATES else None
     train_dataset_profiles = [
