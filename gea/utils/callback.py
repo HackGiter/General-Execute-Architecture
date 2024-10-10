@@ -77,7 +77,7 @@ class TrainState(GeneralState):
     save_steps: int = 0
     train_batch_size: int = 0
     gradient_accumulation_steps: int = 0
-    cur_loss: Union[torch.Tensor, float] = None
+    cur_loss: float = 0.0
     train_loss: float = 0.0
     eval_loss: float = 0.0
     cur_flops: float = 0
@@ -126,10 +126,11 @@ class TrainState(GeneralState):
         prefix = "" if prefix is None else prefix + "_"
         runtime = self.end_time - self.start_time
         return {
+            f"{prefix}loss": round(self.train_loss, 4),
             f"{prefix}runtime": round(runtime, 4),
             f"{prefix}samples_per_second": round(self.num_samples / runtime, 3),
             f"{prefix}steps_per_second": round(self.max_steps / runtime, 3),
-            f"{prefix}total_flos": self.total_flops
+            f"{prefix}total_flos": f"{ int(self.total_flops) >> 30 }GF"
         }
 
 class StateCallback:
@@ -328,7 +329,7 @@ class TrainStateCallback(StateCallback):
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
-            state.cur_loss = (state.cur_loss if isinstance(state.cur_loss, loss) else state.cur_loss.item()) + loss
+            state.cur_loss += loss.item() if isinstance(loss, torch.Tensor) else loss
             self.current_step = state.global_step
         if (
             self.current_step == 1
@@ -356,8 +357,8 @@ class TrainStateCallback(StateCallback):
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
         state.should_log = False
         if "train_loss" in logs:
-            state.cur_loss -= state.cur_loss
-            state.loss = logs["train_loss"]
+            state.cur_loss = 0
+            state.train_loss = logs["train_loss"]
         if "train_flops" in logs:
             state.cur_flops = 0
             state.total_flops += logs["train_flops"]

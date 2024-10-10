@@ -124,7 +124,6 @@ class Trainer:
         if self.train_dataloader is None:
             self.get_train_dataloader()
         steps_per_epoch = (len(self.train_dataloader) // self.train_args.gradient_accumulation_steps) // self.accelerator.num_processes
-        self.state.cur_loss = torch.tensor(0.0).to(self.accelerator.device)
         if self.state.max_steps <= 0:
             self.state.max_steps = math.ceil(steps_per_epoch * self.train_args.epochs)
         if self.train_args.warmup_ratio > 0 and self.state.warmup_steps == 0:
@@ -350,7 +349,7 @@ class Trainer:
 
                 self.callback_handler.on_step_end(
                     state=self.state, 
-                    loss=loss, 
+                    loss=loss.detach(), 
                     flops=float(self.calculate_floating_point_ops(batch)), 
                     sync_on=self.accelerator.sync_gradients, 
                     **kwargs)
@@ -513,7 +512,7 @@ class Trainer:
             metrics = {}
             
             loss = kwargs.pop("loss", self.state.cur_loss)
-            steps = self.state.logging_steps * self.state.gradient_accumulation_steps if prefix == "train" else 1
+            steps = 1 if prefix == "eval" else self.state.logging_steps * self.state.gradient_accumulation_steps
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item() / steps
