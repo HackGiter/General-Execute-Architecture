@@ -357,7 +357,7 @@ class Trainer:
                 if self.accelerator.sync_gradients:
                     self.model.zero_grad()
                     self.do_log(
-                        loss=self.state.cur_loss, 
+                        loss=self.state.train_loss, 
                         grad_norm=grad_norm, 
                         flops=self.state.cur_flops,
                         metrics=metrics, 
@@ -533,7 +533,7 @@ class Trainer:
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             
             if flops is not None:
-                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([flops]))    
+                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([flops])).item   
         
             metrics = {**metrics, **_metrics}
             if prefix is not None:

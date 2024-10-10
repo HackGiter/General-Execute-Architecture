@@ -7,12 +7,15 @@ from dataclasses import dataclass
 from typing import Optional, Literal, Union, Dict, List, Any
 from tqdm.auto import tqdm
 
+import numpy as np
+
 import torch
 from transformers import (
     AutoModel, 
     AutoTokenizer,
 )
 from transformers.trainer_utils import SchedulerType
+from accelerate.utils import gather_object
 
 from .logging import get_logger
 
@@ -300,8 +303,8 @@ class TrainStateCallback(StateCallback):
         super().__init__()
 
     def on_train_begin(self, state:TrainState, **kwargs):
+        state.start_time = time.time()
         if state.is_world_process_zero:
-            state.start_time = time.time()
             self.training_bar = tqdm(total=state.max_steps, dynamic_ncols=True)
         state.wrapped = True
         self.current_step = 0
@@ -326,10 +329,12 @@ class TrainStateCallback(StateCallback):
     def on_step_end(self, state:TrainState, loss:Union[torch.Tensor, float], flops:float, sync_on:bool, **kwargs):
         state.global_step += sync_on
         state.cur_flops += flops
+        state.cur_loss += (loss.item() if isinstance(loss, torch.Tensor) else loss) / state.gradient_accumulation_steps
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
-            state.cur_loss += (loss.item() if isinstance(loss, torch.Tensor) else loss) / state.gradient_accumulation_steps
+            state.train_loss = np.mean(gather_object([state.cur_loss]))
+            state.cur_loss = 0
             self.current_step = state.global_step
         if (
             self.current_step == 1
@@ -362,6 +367,7 @@ class TrainStateCallback(StateCallback):
         if "flops" in logs:
             state.cur_flops = 0
             state.total_flops += logs["flops"]
+            logs["flops"] = f"{ int(logs["flops"]) >> 30 }GF"
         if "eval_loss" in logs:
             state.eval_loss = logs["eval_loss"]
         state.log_history.append({**logs, **{"step": state.global_step}})
@@ -383,7 +389,7 @@ class TrainStateCallback(StateCallback):
             self.evaluation_bar = None
 
     def on_train_end(self, state:TrainState, **kwargs):
+        state.end_time = time.time()
         if state.is_world_process_zero:
             self.training_bar.close()
             self.training_bar = None
-            state.end_time = time.time()
