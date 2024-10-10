@@ -5,6 +5,7 @@ from typing import Literal, Optional, Union
 from contextlib import contextmanager
 
 from transformers import enable_full_determinism, set_seed
+from transformers.utils import is_torch_cuda_available
 from transformers.trainer_utils import SchedulerType
 from accelerate import PartialState
 
@@ -260,6 +261,7 @@ class TrainArguments:
 
     def __post_init__(self):
         enable_full_determinism(self.seed) if self.full_determinism else set_seed(self.seed)
+        self.ddp_backend = "nccl" if is_torch_cuda_available() else "hccl"
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             accelerator_state_kwargs = {}
             accelerator_state_kwargs["backend"] = self.ddp_backend

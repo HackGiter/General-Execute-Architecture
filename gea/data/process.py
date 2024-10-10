@@ -25,7 +25,7 @@ CONFIG4PROFILES: Dict[str, Callable] = {
     "sequence": get_sequences_from_config
 }
 
-PROFILES_CONFIG="data_info.json"
+PROFILES_CONFIG="./data_info.json"
 
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     if profile.load_from == "hf":
@@ -36,7 +36,7 @@ def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     elif profile.load_from == "file":
         _, ext = os.path.splitext(profile.path)
         dataset = load_dataset(
-            path=f"{ext.replace(".", "")}" if ext != ".jsonl" else "json",
+            path=f"{ext.replace('.', '')}" if ext != ".jsonl" else "json",
             data_dir=os.path.dirname(profile.path),
             data_files=profile.path,
             num_proc=kwargs.get("num_proc", None)
@@ -52,7 +52,7 @@ def align_dataset(dataset:Dataset, profile:Profile, desc="Dataset Aligning", **k
     if isinstance(profile, Sequences):
         return dataset.map(
             partial(
-                ALIGN_FUNCTIONS[profile.dtype], 
+                ALIGN_FUNCTIONS["sequence"][profile.formatting], 
                 contexts=profile.contexts, 
                 instructions=profile.instructions, 
                 responses=profile.responses, 
@@ -112,7 +112,7 @@ def get_dataset(
         eos_last:bool = True,
         **kwargs) -> Dict[str, Dataset]:
     
-    dataset_configs = PROFILES_CONFIG if data_args.dataset_dir is None else os.path.join(data_args.dataset_dir, "dataset_info.json")
+    dataset_configs = PROFILES_CONFIG if data_args.dataset_dir is None else os.path.join(data_args.dataset_dir, "data_info.json")
     with open(dataset_configs, 'r') as f:
         dataset_configs = json.load(f)
 

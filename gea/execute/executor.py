@@ -8,7 +8,7 @@ from ..data.process import get_dataset
 from ..train.train import Trainer
 from ..utils.tools import handle_unknown_kwargs
 
-def run_train(kwargs):
+def run_train(kwargs:Dict[str, Any] = {}):
     model_args, data_args, train_args, eval_args, unknown_args = parse_args()
     unknown_args:Dict[str, Any] = ast.literal_eval(handle_unknown_kwargs(unknown_args))
     kwargs.update(unknown_args)
@@ -42,4 +42,5 @@ def run_train(kwargs):
     )
     trainer.train()
 
-        
+if __name__ == "__main__":
+    run_train()

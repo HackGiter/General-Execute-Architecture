@@ -367,7 +367,7 @@ class TrainStateCallback(StateCallback):
         if "flops" in logs:
             state.cur_flops = 0
             state.total_flops += logs["flops"]
-            logs["flops"] = f"{ int(logs["flops"]) >> 30 }GF"
+            logs["flops"] = f"{ int(logs['flops']) >> 30 }GF"
         if "eval_loss" in logs:
             state.eval_loss = logs["eval_loss"]
         state.log_history.append({**logs, **{"step": state.global_step}})

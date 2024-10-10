@@ -85,10 +85,32 @@ def get_model_details(model:Union[AutoModel, nn.Module], details:bool=False) -> 
     if extra_repr:
         extra_lines = extra_repr.split('\n')
     child_lines = []
-    for key, module in model._modules.items():
-        mod_str = get_model_details(module, details)
-        mod_str = _addindent(mod_str, 2)
-        child_lines.append('(' + key + '): ' + mod_str)
+
+    if isinstance(model, nn.ModuleList):
+        prev_mod_str, prev_mod_key, prev_cnt_mod = None, None, 1
+        for key, module in model._modules.items():
+            mod_str = get_model_details(module, details)
+            mod_str = _addindent(mod_str, 2)
+            if mod_str != prev_mod_str and prev_mod_str is not None:
+                if prev_cnt_mod != 1:
+                    child_lines.append('(' + prev_mod_key + '): ' + prev_mod_str)
+                else:
+                    child_lines.append(f'({prev_cnt_mod}x) ' + prev_mod_str)
+                prev_cnt_mod = 1
+            else:
+                prev_cnt_mod += 1
+            prev_mod_str, prev_mod_key = mod_str, key
+        if prev_mod_str is not None:
+            if prev_cnt_mod == 1:
+                child_lines.append('(' + prev_mod_key + '): ' + prev_mod_str)
+            else:
+                child_lines.append(f'({prev_cnt_mod}x) ' + prev_mod_str)
+    else:
+        for key, module in model._modules.items():
+            mod_str = get_model_details(module, details)
+            mod_str = _addindent(mod_str, 2)
+            child_lines.append('(' + key + '): ' + mod_str)
+
     lines = extra_lines + child_lines
 
     main_str = model._get_name() + '('
