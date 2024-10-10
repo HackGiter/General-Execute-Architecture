@@ -329,7 +329,7 @@ class TrainStateCallback(StateCallback):
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
-            state.cur_loss += loss.item() if isinstance(loss, torch.Tensor) else loss
+            state.cur_loss += (loss.item() if isinstance(loss, torch.Tensor) else loss) / state.gradient_accumulation_steps
             self.current_step = state.global_step
         if (
             self.current_step == 1
@@ -356,12 +356,12 @@ class TrainStateCallback(StateCallback):
 
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
         state.should_log = False
-        if "train_loss" in logs:
+        if "loss" in logs:
             state.cur_loss = 0
-            state.train_loss = logs["train_loss"]
-        if "train_flops" in logs:
+            state.train_loss = logs["loss"]
+        if "flops" in logs:
             state.cur_flops = 0
-            state.total_flops += logs["train_flops"]
+            state.total_flops += logs["flops"]
         if "eval_loss" in logs:
             state.eval_loss = logs["eval_loss"]
         state.log_history.append({**logs, **{"step": state.global_step}})

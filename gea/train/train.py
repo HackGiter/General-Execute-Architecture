@@ -356,7 +356,12 @@ class Trainer:
 
                 if self.accelerator.sync_gradients:
                     self.model.zero_grad()
-                    self.do_log(grad_norm=grad_norm, metrics=metrics, **kwargs)
+                    self.do_log(
+                        loss=self.state.cur_loss, 
+                        grad_norm=grad_norm, 
+                        flops=self.state.cur_flops,
+                        metrics=metrics, 
+                        **kwargs)
                     self.do_evaluate(**kwargs)
                     self.do_save(**kwargs)
                 
@@ -499,7 +504,13 @@ class Trainer:
             
             self.callback_handler.on_save(state=self.state, **kwargs)
 
-    def do_log(self, grad_norm = None, metrics:Dict[str, Any] = None, prefix:str = None, **kwargs):
+    def do_log(
+            self, 
+            loss:Union[torch.Tensor, Any] = None, 
+            grad_norm:Union[torch.Tensor, Any] = None, 
+            flops:float = None,
+            metrics:Dict[str, Any] = None, 
+            prefix:str = None, **kwargs):
         if self.state.should_log:
             if metrics is not None:
                 _metrics = self.accelerator.gather_for_metrics(metrics)
@@ -510,21 +521,20 @@ class Trainer:
                 _metrics = {}
 
             metrics = {}
-            
-            loss = kwargs.pop("loss", self.state.cur_loss)
-            steps = 1 if prefix == "eval" else self.state.logging_steps * self.state.gradient_accumulation_steps
             if isinstance(loss, torch.Tensor):
                 loss = loss.detach()
-                loss = self.accelerator.gather(loss).mean().item() / steps
+                loss = self.accelerator.gather(loss).mean().item()
             else:
-                loss = np.mean(self.accelerator.gather_for_metrics([loss])) / steps
+                loss = np.mean(self.accelerator.gather_for_metrics([loss]))
             metrics["loss"] = round(loss, 4)
-            metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([self.state.flops]))
 
             if grad_norm is not None:
                 metrics["grad_norm"] = round(grad_norm.detach().item(), 5) if isinstance(grad_norm, torch.Tensor) else round(grad_norm, 5)
                 metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
             
+            if flops is not None:
+                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([self.state.flops]))    
+        
             metrics = {**metrics, **_metrics}
             if prefix is not None:
                 _metrics = {}
