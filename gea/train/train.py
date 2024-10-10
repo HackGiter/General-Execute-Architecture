@@ -301,9 +301,10 @@ class Trainer:
         train_metrics = metrics_format(self, self.state.get_train_metric("train"))
         k_width = max(len(str(x)) for x in train_metrics.keys())
         v_width = max(len(str(x)) for x in train_metrics.values())
-        logger.info("\n***** train metrics *****")
+        train_metrics_info = ""
         for key in sorted(train_metrics.keys()):
-            logger.info(f"\r  {key: <{k_width}} = {train_metrics[key]:>{v_width}}")
+            train_metrics_info += f"  {key: <{k_width}} = {train_metrics[key]:>{v_width}}\n"
+        logger.info("\n***** train metrics *****\n" + train_metrics_info)
 
     @contextmanager
     def execute_train_contexts(self, *models):
@@ -525,15 +526,15 @@ class Trainer:
                 loss = loss.detach()
                 loss = self.accelerator.gather(loss).mean().item()
             else:
-                loss = np.mean(self.accelerator.gather_for_metrics([loss]))
+                loss = np.mean(self.accelerator.gather_for_metrics([loss])).item()
             metrics["loss"] = round(loss, 4)
 
             if grad_norm is not None:
                 metrics["grad_norm"] = round(grad_norm.detach().item(), 5) if isinstance(grad_norm, torch.Tensor) else round(grad_norm, 5)
-                metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 8)
+                metrics["lr"] = round(self.lr_scheduler.get_last_lr()[0], 6)
             
             if flops is not None:
-                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([flops])).item   
+                metrics["flops"] = np.sum(self.accelerator.gather_for_metrics([flops])).item()
         
             metrics = {**metrics, **_metrics}
             if prefix is not None:
@@ -574,12 +575,12 @@ class Trainer:
             torch.save(rng_states, os.path.join(output_dir, f"rng_state_{self.accelerator.process_index}.pth"))
 
     def estimate_inputs(self, input_dict: Dict[str, Union[torch.Tensor, Any]]) -> int:
+        numel = 0
         if not hasattr(self.model_, "warnings_issued"):
             self.model_.warnings_issued = {}
         if self.model_.main_input_name in input_dict:
             return input_dict[self.model_.main_input_name].numel()
         else:
-            numel = 0
             for _, v in input_dict.items():
                 if isinstance(v, torch.Tensor):
                     numel += v.shape[0] * v.shape[1]
@@ -588,4 +589,4 @@ class Trainer:
     def calculate_floating_point_ops(
         self, input_dict: Dict[str, Union[torch.Tensor, Any]], exclude_embeddings: bool = True
     ) -> int:
-        return 6 * self.estimate_inputs(input_dict) * self.model_.num_parameters(exclude_embeddings)
+        return 6 * self.estimate_inputs(input_dict) * self.model_.num_parameters(exclude_embeddings=exclude_embeddings)
