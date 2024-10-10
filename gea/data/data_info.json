@@ -1,0 +1,34 @@
+{
+    "Magicoder-Evol-Instruct-110K": {
+        "load_from" : "file",
+        "path" : "/data/datasets/Magicoder-Evol-Instruct-110K/data-evol_instruct-decontaminated.jsonl",
+        "split" : "train",
+        "formatting" : "dialogue",
+        "contexts" : [],
+        "instructions": ["instruction"],
+        "responses" : ["response"]
+    },
+    "ultrachat_200k": {
+        "load_from" : "hf",
+        "path" : "/data/datasets/ultrachat_200k",
+        "split" : ["train_sft", "test_sft", "train_gen", "test_gen"],
+        "formatting" : "multi-turn",
+        "contexts" : [],
+        "instructions": ["messages"],
+        "responses" : ["messages"],
+        "conversations" : ["content", "role"],
+        "roles": ["user", "assistant"]
+    },
+    "ShareGPT_Vicuna_unfiltered": {
+        "load_from" : "file",
+        "path" : "/data/lhz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
+        "split" : "train",
+        "formatting" : "multi-turn",
+        "contexts" : [],
+        "instructions": ["conversations"],
+        "responses" : ["conversations"],
+        "conversations" : ["value", "from"],
+        "roles": ["human", "gpt"]
+    }
+
+}
