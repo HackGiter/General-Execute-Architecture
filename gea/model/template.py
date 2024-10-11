@@ -56,49 +56,39 @@ class Template:
         instructions = [
             tokenizer(
                 item, 
-                return_tensors="pt",
                 add_special_tokens=False
             ) for item in instructions
         ]
         responses = [
             tokenizer(
                 item,
-                return_tensors="pt",
                 add_special_tokens=False
             ) for item in responses
         ]
         if len(instructions) != 0 and len(responses) != 0:
-            input_ids = torch.cat(
-                [torch.cat((instr["input_ids"], label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-                ([] if len(instructions) == len(responses) else 
-                ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-                [item["input_ids"] for item in instructions[len(responses):]]))
-            , dim=-1)
-            labels = torch.cat(
-                [torch.cat((torch.full_like(instr["input_ids"], fill_value=self.ignore_index), label["input_ids"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-                ([] if len(instructions) == len(responses) else 
-                ([item["input_ids"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-                [item["input_ids"] for item in instructions[len(responses):]]))
-            , dim=-1)
-            attention_mask = torch.cat(
-                [torch.cat((instr["attention_mask"], label["attention_mask"]), dim=-1) for instr, label in zip(instructions, responses)] + 
-                ([] if len(instructions) == len(responses) else 
-                ([item["attention_mask"] for item in responses[len(instructions):]] if len(instructions) < len(responses) else 
-                [item["attention_mask"] for item in instructions[len(responses):]]))
-            , dim=-1)
+            input_ids, labels, attention_mask = [], [], []
+            for instr, label in zip(instructions, responses):
+                input_ids.append(instr["input_ids"] + label["input_ids"])
+                labels.append([self.ignore_index] * len(instr["input_ids"]) + label["input_ids"])
+                attention_mask.append([1] * len(input_ids[-1]))
+            if len(instructions) != len(responses):
+                for item in (instructions if len(instructions) > len(responses) else responses):
+                    input_ids.append(item["input_ids"])
+                    labels.append(item["input_ids"])
+                    attention_mask.append([1] * len(item["input_ids"]))
             if max_length is not None:
-                input_ids = input_ids[:, :max_length]
-                labels = labels[:, :max_length]
-                attention_mask = attention_mask[:, :max_length]
+                input_ids = [item[:max_length] for item in input_ids]
+                labels = [item[:max_length] for item in labels]
+                attention_mask = [item[:max_length] for item in attention_mask]
         else:
             instructions = instructions if len(instructions) != 0 else responses
             if concatenated:
-                input_ids = torch.cat([item["input_ids"] for item in instructions], dim=-1)
+                from itertools import chain
+                input_ids = list(chain(*[item["input_ids"] for item in instructions]))
                 labels = input_ids
-                attention_mask = torch.cat([item["attention_mask"] for item in instructions], dim=-1)
+                attention_mask = [[1] * len(item) for item in input_ids]
             else:
                 input_ids = [item["input_ids"] for item in instructions]
-                labels = None
                 attention_mask = [item["attention_mask"] for item in instructions]
 
         return { 
@@ -236,7 +226,7 @@ register_template(
     f"{sys_tokens[0]}system{sys_tokens[1]}{sys_prompt}{eos_token}",
     
     inst_template=lambda instruction, inst_tokens, sys_prompt, bos_token, eos_token: 
-    f"{bos_token}{sys_prompt}{inst_tokens[0]}user{inst_tokens[1]}{instruction}{eos_token}",
+    f"{sys_prompt}{inst_tokens[0]}user{inst_tokens[1]}{instruction}{eos_token}",
     
     resp_template=lambda response, inst_tokens, bos_token, eos_token: 
     f"{inst_tokens[0]}assistant{inst_tokens[1]}{response}{eos_token}"
@@ -280,7 +270,8 @@ def get_model(
         
         if load_model_fn is not None:
             model = load_model_fn(model, model_args=model_args, pretrained_model_path=pretrained_model_path, **kwargs)
-            
+    tokenizer.pad_token = kwargs.pop("pad_token", tokenizer.eos_token)        
+    
     logger.info(f"\n{get_model_details(model, True)}")
     return (model, tokenizer, )
 

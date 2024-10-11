@@ -16,7 +16,7 @@ from datasets import Dataset, IterableDataset, DatasetDict
 from transformers import (
     AutoModel,
     AutoTokenizer,
-    get_scheduler,
+    # get_scheduler,
 )
 from accelerate import Accelerator, DataLoaderConfiguration, skip_first_batches
 from accelerate.utils import LoggerType, DistributedType
@@ -26,6 +26,8 @@ from ..utils.callback import CallbackHandler, TrainStateCallback, TrainState, Op
 from ..utils.integration import TensorBoardCallback
 from ..utils.tools import rotate_checkpoints
 from ..utils.logging import get_logger
+from ..model.template import IGNORE_INDEX
+from .scheduler import get_schedulers
 
 from transformers.trainer_pt_utils import metrics_format, get_model_param_count, remove_dummy_checkpoint
 
@@ -108,7 +110,11 @@ class Trainer:
         }
 
     def prepare_train_kwargs(self, kwargs:Dict[str, Any]) -> None:
-        self.train_data_collator = kwargs.pop("train_collate_fn", None)
+        self.train_data_collator = kwargs.pop("train_collate_fn", 
+                                              DataCollatorForSeq2Seq(
+                                                  tokenizer=self.tokenizer, 
+                                                  pad_to_multiple_of=8, 
+                                                  label_pad_token_id=kwargs.pop("ignore_index", IGNORE_INDEX)))
         self.eval_data_collator = kwargs.pop("eval_collate_fn", self.train_data_collator)
 
         self.train_dataloader = None
@@ -232,7 +238,7 @@ class Trainer:
             import ast
             lr_scheduler_kwargs = ast.literal_eval(self.train_args.lr_scheduler_kwargs) if isinstance(self.train_args.lr_scheduler_kwargs, str) else kwargs.pop("lr_scheduler_kwargs", self.train_args.lr_scheduler_kwargs)
             lr_scheduler_kwargs = self.kwargs.pop("lr_scheduler_kwargs", lr_scheduler_kwargs)
-            self.lr_scheduler = get_scheduler(
+            self.lr_scheduler = get_schedulers(
                 name=self.state.lr_scheduler,
                 optimizer=self.optimizer,
                 num_warmup_steps=self.state.warmup_steps * self.accelerator.num_processes,
