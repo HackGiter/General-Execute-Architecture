@@ -9,9 +9,10 @@ from datasets import load_dataset, Dataset, concatenate_datasets
 
 from ..args import TrainArguments, EvalArguments, DataArguments, ModelArguments
 from ..utils.logging import get_logger
+from ..utils.constant import IGNORE_INDEX
 from ..model.template import Template, MODEL_TEMPLATES
 
-from .dataclass import Profile, Sequences, PROFILE_CLASSES
+from .dataclass import Profile, Sequences
 from .align import ALIGN_FUNCTIONS
 from .sequence import SEQUENCE_PROFILES, get_sequences_from_config
 
@@ -25,6 +26,8 @@ CONFIG4PROFILES: Dict[str, Callable] = {
     "sequence": get_sequences_from_config
 }
 
+PROFILES_CONFIG=os.path.join(os.path.dirname(os.path.abspath(__file__)), "data_info.json")
+
 def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     if profile.load_from == "hf":
         dataset = load_dataset(
@@ -34,14 +37,14 @@ def load_datasets(profile:Union[List[Profile], Profile], **kwargs) -> Dataset:
     elif profile.load_from == "file":
         _, ext = os.path.splitext(profile.path)
         dataset = load_dataset(
-            path=f"{ext.replace(".", "")}" if ext != ".jsonl" else "json",
+            path=f"{ext.replace('.', '')}" if ext != ".jsonl" else "json",
             data_dir=os.path.dirname(profile.path),
             data_files=profile.path,
             num_proc=kwargs.get("num_proc", None)
         )
     else:
         raise NotImplementedError
-    if profile.split is not None:
+    if profile.split is not None and profile.split in dataset.column_names:
         dataset = dataset[profile.split] if not isinstance(profile.split, List) else concatenate_datasets([dataset[item] for item in profile.split])
     profile.column_names = dataset.column_names
     return dataset
@@ -50,7 +53,7 @@ def align_dataset(dataset:Dataset, profile:Profile, desc="Dataset Aligning", **k
     if isinstance(profile, Sequences):
         return dataset.map(
             partial(
-                ALIGN_FUNCTIONS[profile.dtype], 
+                ALIGN_FUNCTIONS["sequence"][profile.formatting], 
                 contexts=profile.contexts, 
                 instructions=profile.instructions, 
                 responses=profile.responses, 
@@ -62,14 +65,13 @@ def align_dataset(dataset:Dataset, profile:Profile, desc="Dataset Aligning", **k
             **kwargs,
         )
     else:
-        NotImplemented
+        raise NotImplementedError
 
 def preprocess_dataset( 
         dataset: Dataset,
         tokenizer:AutoTokenizer = None, 
         sys_prompt:str = None,
         max_length:int = None,
-        eos_last:bool = True,
         template:Template = None,
         desc:str = "Dataset Preprocessing",
         **kwargs) -> Dataset:
@@ -79,7 +81,6 @@ def preprocess_dataset(
             sys_prompt=sys_prompt,
             tokenizer=tokenizer,
             max_length=max_length,
-            eos_last=eos_last,
         ),
         remove_columns=dataset.column_names,
         desc=desc,
@@ -87,17 +88,24 @@ def preprocess_dataset(
     )
 
 def log_print_example(
-        dataset:Dataset, 
+        example:Dict[str, Any], 
         tokenizer: AutoTokenizer,
         name: str,
     ) -> None:
-    example = tokenizer.batch_decode(dataset[0]["input_ids"],add_special_tokens=False,)[0]
-    logger.info(f"\n{name} Example:\n{example}")
+    input_ids = example["input_ids"]
+    label_ids = list(filter(lambda x: x!= IGNORE_INDEX, example["labels"]))
+    dataset_example = f"\n{name} Example:\n"
+    dataset_example += "input_ids:\n{}\n".format(input_ids)
+    dataset_example += "inputs:\n{}\n".format(tokenizer.decode(input_ids, add_special_tokens=False,))
+    dataset_example += "label_ids:\n{}\n".format(example["labels"])
+    dataset_example += "label_ids:\n{}".format(tokenizer.decode(label_ids, add_special_tokens=False,))
+    logger.info(dataset_example)
 
 def get_dataset_kwargs(train_args: TrainArguments, **kwargs) -> Dict[str, Any]:
     return {
         "num_proc": train_args.get("dataset_num_proc", kwargs.get("dataset_num_proc", 4)),
-        "batched": train_args.get("batched", kwargs.get("batched", False)),
+        "batched": train_args.get("batched", kwargs.get("batched", True)),
+        "load_from_cache_file": train_args.get("load_from_cache_file", kwargs.get("load_from_cache_file", False))
     }
 
 def get_dataset(
@@ -107,14 +115,11 @@ def get_dataset(
         eval_args:EvalArguments,
         tokenizer:AutoTokenizer,
         max_length:int = None,
-        eos_last:bool = True,
         **kwargs) -> Dict[str, Dataset]:
     
-    if data_args.dataset_dir is not None:
-        with open(os.path.join(data_args.dataset_dir, "dataset_info.json"), 'r') as f:
-            dataset_configs = json.load(f)
-    else:
-        dataset_configs = None
+    dataset_configs = PROFILES_CONFIG if data_args.dataset_dir is None else os.path.join(data_args.dataset_dir, "data_info.json")
+    with open(dataset_configs, 'r') as f:
+        dataset_configs = json.load(f)
 
     template = MODEL_TEMPLATES[model_args.model] if model_args.model in MODEL_TEMPLATES else None
     train_dataset_profiles = [
@@ -142,13 +147,12 @@ def get_dataset(
                     profile=profile,
                     desc=f"Aligning {profile.name}",
                     **dataset_kwargs)
-                
+
                 train_dataset = preprocess_dataset(
                     dataset=train_dataset, 
                     tokenizer=tokenizer, 
                     sys_prompt=template.sys_prompt if template is not None and data_args.with_sys_prompt else None, 
                     max_length=max_length,
-                    eos_last=eos_last,
                     template=template,
                     desc=f"Preprocessing {profile.name}",
                     **dataset_kwargs
@@ -162,7 +166,7 @@ def get_dataset(
                 )
             
             log_print_example(
-                dataset=train_dataset,
+                next(iter(train_dataset)),
                 tokenizer=tokenizer, 
                 name=profile.name,
             )
@@ -184,7 +188,6 @@ def get_dataset(
                     tokenizer=tokenizer, 
                     sys_prompt=template.sys_prompt if data_args.with_sys_prompt else None, 
                     max_length=max_length,
-                    eos_last=eos_last,
                     template=template,
                     desc=f"Preprocessing {profile.name}",
                     **dataset_kwargs,
@@ -200,7 +203,6 @@ def get_dataset(
             postprocess_kwargs = {
                 "tokenizer":tokenizer,
                 "max_length":max_length,
-                "eos_last":eos_last,
                 "template":template,
             }
             postprocess_kwargs.update(kwargs.pop("postprocess_kwargs", {}))
@@ -223,10 +225,6 @@ def get_dataset(
             datasets = train_datasets.train_test_split(train_args.val_ratio, shuffle=train_args.shuffle)
             train_datasets = datasets["train"]
             eval_datasets = datasets["test"]
-
-        train_datasets.set_format("torch")
-        if eval_datasets is not None:
-            eval_datasets.set_format("torch")
 
     return {
         "train_dataset": train_datasets,

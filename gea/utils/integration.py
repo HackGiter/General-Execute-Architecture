@@ -1,5 +1,5 @@
 import importlib
-from typing import Iterable, Dict, List
+from typing import Dict, List
 
 from torch.utils import tensorboard
 

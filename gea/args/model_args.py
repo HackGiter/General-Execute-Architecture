@@ -24,3 +24,11 @@ class ModelArguments:
             "help": "name or path of model in huggingface or self-defined",
         }
     )
+    low_cpu_mem_usage: bool = field(
+        default=True,
+        metadata={"help": "Whether or not to use memory-efficient model loading."},
+    )
+    use_fast_tokenizer: bool = field(
+        default=True,
+        metadata={"help": "Whether or not to use one of the fast tokenizer (backed by the tokenizers library)."},
+    )

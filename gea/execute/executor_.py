@@ -6,7 +6,9 @@ from ..args.parser import parse_args
 from ..model.template import get_model
 from ..data.process import get_dataset
 from ..train.train import Trainer
-from ..utils.tools import handle_unknown_kwargs
+from ..utils.tools import handle_unknown_kwargs, get_logger
+
+logger = get_logger(__name__)
 
 def run_train(kwargs: Dict[str, Any] = {}):
     model_args, data_args, train_args, eval_args, unknown_args = parse_args()
@@ -34,13 +36,8 @@ def run_train(kwargs: Dict[str, Any] = {}):
             train_args, model_args, data_args, eval_args, tokenizer, **data_kwargs
         )
     kwargs.update(dataset)
-    trainer = Trainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_args=train_args,
-        **kwargs,
-    )
-    trainer.train()
+    logger.info(type(dataset["train_dataset"][0]['input_ids']))
+    logger.info(dataset["train_dataset"][0])
 
 if __name__ == "__main__":
     run_train()

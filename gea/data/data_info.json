@@ -1,7 +1,7 @@
 {
     "Magicoder-Evol-Instruct-110K": {
-        "load_from" : "file",
-        "path" : "/data/datasets/Magicoder-Evol-Instruct-110K/data-evol_instruct-decontaminated.jsonl",
+        "load_from" : "hf",
+        "path" : "/data/datasets/Magicoder-Evol-Instruct-110K",
         "split" : "train",
         "formatting" : "dialogue",
         "contexts" : [],
@@ -21,7 +21,7 @@
     },
     "ShareGPT_Vicuna_unfiltered": {
         "load_from" : "file",
-        "path" : "/data/lhz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json",
+        "path" : "/data/lihz/datasets/ShareGPT_Vicuna_unfiltered/ShareGPT_V3_unfiltered_cleaned_split.json",
         "split" : "train",
         "formatting" : "multi-turn",
         "contexts" : [],
@@ -29,6 +29,15 @@
         "responses" : ["conversations"],
         "conversations" : ["value", "from"],
         "roles": ["human", "gpt"]
+    },
+    "MathInstruct": {
+        "load_from" : "hf",
+        "path" : "/data/datasets/MathInstruct",
+        "split" : "train",
+        "formatting" : "dialogue",
+        "contexts" : [],
+        "instructions": ["instruction"],
+        "responses" : ["output"]
     }
 
 }

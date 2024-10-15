@@ -1,12 +1,13 @@
 import os
 import re
 import shutil
-from typing import Union, List, Any
+from typing import Union, Tuple, List, Any
 from pathlib import Path
 
 import torch.nn as nn
 from transformers import AutoModel
 
+from .constant import ALL_LAYERNORM_LAYERS
 from .logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,11 +57,11 @@ def get_parameter_names(model:Union[AutoModel, nn.Module], forbidden_layer_types
     for name, child in model.named_children():
         result += [
             f"{name}.{n}"
-            for n in get_parameter_names(child, forbidden_layer_types, forbidden_module)
+            for n in get_parameter_names(child, forbidden_layer_types, forbidden_layer_names, forbidden_module)
             if not (
                 isinstance(child, tuple(forbidden_layer_types))
                 or (child in tuple(forbidden_module) if forbidden_module is not None else False)
-                or (name not in forbidden_layer_names if forbidden_layer_names is not None else False)
+                or (name in forbidden_layer_names if forbidden_layer_names is not None else False)
             )
         ]
     # Add model specific parameters (defined with nn.Parameter) since they are not in any child.
@@ -85,10 +86,32 @@ def get_model_details(model:Union[AutoModel, nn.Module], details:bool=False) -> 
     if extra_repr:
         extra_lines = extra_repr.split('\n')
     child_lines = []
-    for key, module in model._modules.items():
-        mod_str = get_model_details(module, details)
-        mod_str = _addindent(mod_str, 2)
-        child_lines.append('(' + key + '): ' + mod_str)
+
+    if isinstance(model, nn.ModuleList):
+        prev_mod_str, prev_mod_key, prev_cnt_mod = None, None, 1
+        for key, module in model._modules.items():
+            mod_str = get_model_details(module, details)
+            mod_str = _addindent(mod_str, 2)
+            if mod_str != prev_mod_str and prev_mod_str is not None:
+                if prev_cnt_mod == 1:
+                    child_lines.append('(' + prev_mod_key + '): ' + prev_mod_str)
+                else:
+                    child_lines.append(f'(0-{prev_cnt_mod-1}) {prev_cnt_mod} x ' + prev_mod_str)
+                prev_cnt_mod = 1
+            else:
+                prev_cnt_mod += 1
+            prev_mod_str, prev_mod_key = mod_str, key
+        if prev_mod_str is not None:
+            if prev_cnt_mod == 1:
+                child_lines.append('(' + prev_mod_key + '): ' + prev_mod_str)
+            else:
+                child_lines.append(f'(0-{prev_cnt_mod-2:}) {prev_cnt_mod - 1} x ' + prev_mod_str)
+    else:
+        for key, module in model._modules.items():
+            mod_str = get_model_details(module, details)
+            mod_str = _addindent(mod_str, 2)
+            child_lines.append('(' + key + '): ' + mod_str)
+
     lines = extra_lines + child_lines
 
     main_str = model._get_name() + '('
@@ -107,3 +130,42 @@ def get_model_details(model:Union[AutoModel, nn.Module], details:bool=False) -> 
         param_infos += ")"
         main_str += param_infos if len(param_infos) != 4 else ""
     return main_str
+
+def count_parameters(model: nn.Module) -> Tuple[int, int]:
+    r"""
+    Returns the number of trainable parameters and number of all parameters in the model.
+    """
+    trainable_params, all_param = 0, 0
+    for param in model.parameters():
+        num_params = param.numel()
+        # if using DS Zero 3 and the weights are initialized empty
+        if num_params == 0 and hasattr(param, "ds_numel"):
+            num_params = param.ds_numel
+
+        # Due to the design of 4bit linear layers from bitsandbytes, multiply the number of parameters by itemsize
+        if param.__class__.__name__ == "Params4bit":
+            if hasattr(param, "quant_storage") and hasattr(param.quant_storage, "itemsize"):
+                num_bytes = param.quant_storage.itemsize
+            elif hasattr(param, "element_size"):  # for older pytorch version
+                num_bytes = param.element_size()
+            else:
+                num_bytes = 1
+
+            num_params = num_params * 2 * num_bytes
+
+        all_param += num_params
+        if param.requires_grad:
+            trainable_params += num_params
+
+    return trainable_params, all_param
+
+def get_decay_parameter_names(model, forbidden_layer_types:List[Any], forbidden_layer_names:List[str]=None, forbidden_module:List[Any]=None) -> List[str]:
+    """
+    Get all parameter names that weight decay will be applied to
+
+    Note that some models implement their own layernorm instead of calling nn.LayerNorm, weight decay could still
+    apply to those modules since this function only filter out instance of nn.LayerNorm
+    """
+    decay_parameters = get_parameter_names(model, forbidden_layer_types, forbidden_layer_names, forbidden_module)
+    decay_parameters = [name for name in decay_parameters if "bias" not in name]
+    return decay_parameters

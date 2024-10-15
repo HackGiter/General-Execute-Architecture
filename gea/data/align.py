@@ -1,53 +1,67 @@
 from typing import Callable, Dict, List, Any
 
-def align_text(examples: Dict[str, Any], contexts: str) -> Dict[str, str]:
+from ..utils.logging import get_logger
+
+logger = get_logger(__name__)
+
+def align_text(examples: Dict[str, List[Any]], contexts: str, **kwargs) -> Dict[str, str]:
     return { "contexts": examples[contexts] }
 
-def align_dialogue(examples: Dict[str, Any], 
+def align_dialogue(examples: Dict[str, List[Any]], 
                    contexts: List[str], 
                    instructions: List[str], 
-                   responses: List[str], 
-                   conversations: List[str] = None,
-                   roles: List[str] = None) -> Dict[str, List[str]]:
+                   responses: List[str], **kwargs) -> Dict[str, List[str]]:
     _contexts, _instructions, _responses = [], [], []
-    if roles is None:
-        if contexts is not None:
-            _contexts = [examples[ctx] for ctx in contexts]
-        if instructions is not None:
-            _instructions = [examples[instr] for instr in instructions]
-        if responses is not None:
-            _responses = [examples[resp] for resp in responses]
-    else:
-        if contexts is not None:
-            for ctx in contexts:
-                _contexts += [item[conversations[0]] for item in examples[ctx] if item[conversations[1]] == roles[0]]
-        if instructions is not None:
-            for instr in instructions:
-                _instructions += [item[conversations[0]] for item in examples[instr] if item[conversations[1]] == roles[0]]
-        if responses is not None:
-            for resp in responses:
-                _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
-    return { "contexts":_contexts, "instructions":_instructions, "responses":_responses }
+    for key, value in examples.items():
+        if key in instructions:
+            _instructions += ([[] for _ in range(len(value))] if len(_instructions) == 0 else [])
+            for i, item in enumerate(value):
+                _instructions[i].append(item)
+        elif key in responses:
+            _responses += ([[] for _ in range(len(value))] if len(_responses) == 0 else [])
+            for i, item in enumerate(value):
+                _responses[i].append(item)
+        elif key in contexts:
+            _contexts += ([[] for _ in range(len(value))] if len(_contexts) == 0 else [])
+            for i, item in enumerate(value):
+                _contexts[i].append(item)
+    examples = {}
+    if len(_contexts) > 0:
+        examples["contexts"] = _contexts
+    if len(_instructions) > 0:
+        examples["instructions"] = _instructions
+    if len(_responses) > 0:
+        examples["responses"] = _responses
+    return examples
 
-def align_multi_turn(examples: Dict[str, Any], 
+def align_multi_turn(examples: Dict[str, List[Any]], 
                    contexts: List[str], 
                    instructions: List[str], 
                    responses: List[str], 
                    conversations: List[str] = None,
-                   roles: List[str] = None) -> Dict[str, List[str]]:
-    if contexts is not None:
-        _contexts = []
-        for ctx in contexts:
-            _contexts += [item[conversations[0]] for item in examples[ctx] if item[conversations[1]] == roles[0]]
-    if instructions is not None:
-        _instructions = []
-        for instr in instructions:
-            _instructions += [item[conversations[0]] for item in examples[instr] if item[conversations[1]] == roles[0]]
-    if responses is not None:
-        _responses = []
-        for resp in responses:
-            _responses += [item[conversations[0]] for item in examples[resp] if item[conversations[1]] == roles[1]]
-    return { "contexts":_contexts, "instructions":_instructions, "responses":_responses }
+                   roles: List[str] = None, **kwargs) -> Dict[str, List[str]]:
+    _contexts, _instructions, _responses = [], [], []
+    for key, value in examples.items():
+        if key in instructions:
+            _instructions += ([[] for _ in range(len(value))]if len(_instructions) == 0 else [])
+            for i, v in enumerate(value):
+                _instructions[i] += [item[conversations[0]] for item in v if item[conversations[1]] == roles[0]]
+        elif key in responses:
+            _responses += ([[] for _ in range(len(value))] if len(_responses) == 0 else [])
+            for i, v in enumerate(value):
+                _responses[i] += [item[conversations[0]] for item in v if item[conversations[1]] == roles[0]]
+        elif key in contexts:
+            _contexts += ([[] for _ in range(len(value))] if len(_contexts) == 0 else [])
+            for i, v in enumerate(value):
+                _contexts[i] += [item[conversations[0]] for item in v if item[conversations[1]] == roles[0]]
+    examples = {}
+    if len(_contexts) > 0:
+        examples["contexts"] = _contexts
+    if len(_instructions) > 0:
+        examples["instructions"] = _instructions
+    if len(_responses) > 0:
+        examples["responses"] = _responses
+    return examples
 
 ALIGN_FUNCTIONS: Dict[str, Dict[str, Callable]] = {
     "sequence": {

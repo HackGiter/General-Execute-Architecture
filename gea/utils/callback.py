@@ -37,6 +37,7 @@ class Optim(str, Enum):
 
 @dataclass
 class GeneralState:
+    total_steps: int = 0
     global_step: int = 0
     logging_steps: int = 0
     log_history: List[Dict[str, float]] = None
@@ -59,9 +60,10 @@ class GeneralState:
 
     def save_to_json(self, json_path: str):
         """Save the content of this instance in JSON format inside `json_path`."""
-        json_string = json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True) + "\n"
-        with open(json_path, "w", encoding="utf-8") as f:
-            f.write(json_string)
+        if self.is_world_process_zero:
+            json_string = json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True) + "\n"
+            with open(json_path, "w", encoding="utf-8") as f:
+                f.write(json_string)
 
     @classmethod
     def load_from_json(cls, json_path: str):
@@ -74,13 +76,12 @@ class GeneralState:
 class TrainState(GeneralState):
     epochs: Union[float, int] = None
     global_epoch: int = 0
-    num_samples: int = 0
+    num_examples: int = 0
     max_steps: int = 0
     eval_steps: int = 0
     save_steps: int = 0
     train_batch_size: int = 0
     gradient_accumulation_steps: int = 0
-    cur_loss: float = 0.0
     train_loss: float = 0.0
     eval_loss: float = 0.0
     cur_flops: float = 0
@@ -114,7 +115,7 @@ class TrainState(GeneralState):
     def hparams(self) -> Dict[str, Any]:
         return {
             "epochs": self.epochs,
-            "num_samples": self.num_samples,
+            "num_examples": self.num_examples,
             "max_steps": self.max_steps,
             "batch_size": self.train_batch_size,
             "optim": self.optim,
@@ -131,7 +132,7 @@ class TrainState(GeneralState):
         return {
             f"{prefix}loss": round(self.train_loss, 4),
             f"{prefix}runtime": round(runtime, 4),
-            f"{prefix}samples_per_second": round(self.num_samples / runtime, 3),
+            f"{prefix}samples_per_second": round(self.num_examples / runtime, 3),
             f"{prefix}steps_per_second": round(self.max_steps / runtime, 3),
             f"{prefix}total_flos": f"{ int(self.total_flops) >> 30 }GF"
         }
@@ -325,16 +326,15 @@ class TrainStateCallback(StateCallback):
         state.should_log = False
         state.should_eval = False
         state.should_save = False
+        state.total_steps += 1
+        return state.total_steps % state.gradient_accumulation_steps == 0
     
-    def on_step_end(self, state:TrainState, loss:Union[torch.Tensor, float], flops:float, sync_on:bool, **kwargs):
+    def on_step_end(self, state:TrainState, flops:float, sync_on:bool, **kwargs):
         state.global_step += sync_on
-        state.cur_flops += flops
-        state.cur_loss += (loss.item() if isinstance(loss, torch.Tensor) else loss) / state.gradient_accumulation_steps
+        state.cur_flops += flops if flops is not None else 0
         if sync_on:
             if state.is_world_process_zero:
                 self.training_bar.update(state.global_step - self.current_step)
-            state.train_loss = np.mean(gather_object([state.cur_loss]))
-            state.cur_loss = 0
             self.current_step = state.global_step
         if (
             self.current_step == 1
@@ -362,12 +362,11 @@ class TrainStateCallback(StateCallback):
     def on_log(self, state:TrainState, logs:Dict[str, Any], **kwargs):
         state.should_log = False
         if "loss" in logs:
-            state.cur_loss = 0
             state.train_loss = logs["loss"]
         if "flops" in logs:
             state.cur_flops = 0
             state.total_flops += logs["flops"]
-            logs["flops"] = f"{ int(logs["flops"]) >> 30 }GF"
+            logs["flops"] = f"{ int(logs['flops']) >> 30 }GF"
         if "eval_loss" in logs:
             state.eval_loss = logs["eval_loss"]
         state.log_history.append({**logs, **{"step": state.global_step}})

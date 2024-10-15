@@ -10,7 +10,7 @@ def get_sequences_from_config(
     config: Dict[str, Any]
 ) -> Sequences:
     register_sequences(
-        name=str,
+        name=name,
         **config
     )
 

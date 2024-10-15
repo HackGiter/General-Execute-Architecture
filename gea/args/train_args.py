@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Union
 from contextlib import contextmanager
 
+import torch
 from transformers import enable_full_determinism, set_seed
+from transformers.utils import is_torch_available, is_torch_cuda_available, is_torch_tf32_available
 from transformers.trainer_utils import SchedulerType
-from accelerate import PartialState
+from accelerate.state import AcceleratorState, PartialState
 
 from ..utils.callback import StateStrategy, Optim
 
@@ -119,10 +121,22 @@ class TrainArguments:
             "help": "whether to shuffle the dataloader"
         }
     )
+    dataset_num_proc: int = field(
+        default=4,
+        metadata={
+            "help": "number of workers for loading/processing dataset batches"
+        }
+    )
+    load_from_cache_file: bool = field(
+        default=False,
+        metadata={
+            "help": "whether load from dataset cache file or not"
+        }
+    )
     dataloader_num_workers: int = field(
         default=1,
         metadata={
-            "help": "number of workers for loading/processing dataset batches"
+            "help": "number of workers for dataloader batches"
         }
     )
     dataloader_prefetch_factor: int = field(
@@ -141,6 +155,23 @@ class TrainArguments:
         default=False,
         metadata={
             "help": "drop last part of dataloader"
+        }
+    )
+    even_batches: bool = field(
+        default=True,
+        metadata={
+            "help": "If set to `True`, in cases where the total batch size across all processes does not exactly divide the"
+            " dataset, samples at the start of the dataset will be duplicated so the batch can be divided equally among"
+            " all workers."
+        }
+    )
+    non_blocking: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use non-blocking CUDA calls to help minimize synchronization during "
+            "distributed training with prepared `DataLoader` inputs being moved to device. "
+            "Best if used with `pin_memory=True` in the `TrainingArguments`. Requires accelerate "
+            "v0.30.0."
         }
     )
     project: Optional[str] = field(
@@ -209,8 +240,8 @@ class TrainArguments:
             "help": "maximum gradient norm clip"
         }
     )
-    mixed_precision: Literal['bf16', 'fp16'] = field(
-        default=None,
+    mixed_precision: Literal['bf16', 'fp16', 'no'] = field(
+        default="no",
         metadata={
             "help": "training with bfloat16/float16 precision"
         }
@@ -221,11 +252,23 @@ class TrainArguments:
             "help": "gradient accumulation steps of training"
         }
     )
+    upcast_layernorm: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to upcast the layernorm weights in fp32."},
+    )
     gradient_checkpointing: bool = field(
         default=False,
         metadata={
             "help": "Acitvate gradient checkpointing if needed"
         }
+    )
+    use_unsloth_gc: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to use unsloth's gradient checkpointing."},
+    )
+    upcast_lmhead_output: bool = field(
+        default=False,
+        metadata={"help": "Whether or not to upcast the output of lm_head in fp32."},
     )
     resume_from_checkpoint: str = field(
         default=None,
@@ -260,8 +303,21 @@ class TrainArguments:
 
     def __post_init__(self):
         enable_full_determinism(self.seed) if self.full_determinism else set_seed(self.seed)
+        if is_torch_available():
+            if is_torch_cuda_available():
+                self.ddp_backend = "nccl"
+                if is_torch_tf32_available():
+                    torch.backends.cuda.matmul.allow_tf32 = True
+                    torch.backends.cudnn.allow_tf32 = True
+            else:
+                self.ddp_backend = "hccl"
+        
+        if self.mixed_precision != "no":
+            os.environ["ACCELERATE_MIXED_PRECISION"] = self.mixed_precision
+
         if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
             accelerator_state_kwargs = {}
+            AcceleratorState._reset_state(reset_partial_state=True)
             accelerator_state_kwargs["backend"] = self.ddp_backend
             accelerator_state_kwargs["timeout"] = timedelta(seconds=self.ddp_timeout)
             if self.deepspeed:
